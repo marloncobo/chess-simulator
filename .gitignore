@@ -2,3 +2,6 @@ venv/
 runs/
 __pycache__/
 *.pyc
+.DS_Store
+video.mp4
+metricas/v1-4/weights/
