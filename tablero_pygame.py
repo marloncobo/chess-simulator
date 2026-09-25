@@ -5,7 +5,6 @@ CASILLA = 80                    # pixeles por casilla
 LADO = CASILLA * 8              # 640x640
 CLARO = (240, 217, 181)
 OSCURO = (181, 136, 99)
-BORDE = (60, 40, 25)
 # -------------------------
 
 # Posicion inicial estandar.
@@ -24,10 +23,10 @@ POSICION_INICIAL = [
 
 # Simbolos unicode de ajedrez
 SIMBOLOS = {
-    "t": "\u265C", "c": "\u265E", "a": "\u265D",
-    "d": "\u265B", "r": "\u265A", "p": "\u265F",
-    "T": "\u2656", "C": "\u2658", "A": "\u2657",
-    "D": "\u2655", "R": "\u2654", "P": "\u2659",
+    "t": "♜", "c": "♞", "a": "♝",
+    "d": "♛", "r": "♚", "p": "♟",
+    "T": "♖", "C": "♘", "A": "♗",
+    "D": "♕", "R": "♔", "P": "♙",
 }
 
 
@@ -56,11 +55,6 @@ def dibujar_piezas(pantalla, fuente, posicion):
             pantalla.blit(texto, (x, y))
 
 
-def centro_casilla(fila, col):
-    """Devuelve la coordenada (x, y) del centro de una casilla."""
-    return (col * CASILLA + CASILLA // 2, fila * CASILLA + CASILLA // 2)
-
-
 def main():
     pygame.init()
     pantalla = pygame.display.set_mode((LADO, LADO))
@@ -69,12 +63,6 @@ def main():
     # DejaVu Sans trae los simbolos de ajedrez en Ubuntu
     fuente = pygame.font.SysFont("dejavusans", int(CASILLA * 0.7))
 
-    # Coordenadas de las 4 torres en la posicion inicial
-    print("Centros de las 4 torres en el tablero digital:")
-    for fila, col in [(0, 0), (0, 7), (7, 0), (7, 7)]:
-        pieza = POSICION_INICIAL[fila][col]
-        print(f"  fila {fila}, col {col}  ->  {centro_casilla(fila, col)}  ({pieza})")
-
     corriendo = True
     while corriendo:
         for evento in pygame.event.get():
@@ -82,13 +70,6 @@ def main():
                 corriendo = False
             elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
                 corriendo = False
-            elif evento.type == pygame.MOUSEBUTTONDOWN:
-                # Click: muestra en que casilla caiste
-                mx, my = evento.pos
-                col, fila = mx // CASILLA, my // CASILLA
-                letra = "abcdefgh"[col]
-                numero = 8 - fila
-                print(f"Click en {letra}{numero}  (fila {fila}, col {col})")
 
         dibujar_tablero(pantalla)
         dibujar_piezas(pantalla, fuente, POSICION_INICIAL)
