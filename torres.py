@@ -33,6 +33,10 @@ CONFIANZA = 0.25
 CSV_SALIDA = "torres_detectadas.csv"
 EXTENSIONES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
+# En un tablero no puede haber mas de 4 torres. Si el modelo detecta
+# de mas, se conservan las de mayor confianza y el resto se descarta.
+MAX_TORRES = 4
+
 # Colores en BGR (asi los maneja OpenCV)
 COLOR_SILUETA = (0, 255, 255)     # amarillo
 COLOR_PUNTO = (0, 0, 255)         # rojo
@@ -68,6 +72,26 @@ def centros_de_masa(resultado, model):
     return torres
 
 
+def limitar_torres(torres):
+    """
+    Deja como maximo MAX_TORRES, priorizando las de mayor confianza.
+    Devuelve (conservadas, descartadas).
+    """
+    if len(torres) <= MAX_TORRES:
+        return torres, []
+
+    # Mayor confianza primero; a igual confianza, mascara mas grande
+    por_confianza = sorted(
+        torres, key=lambda t: (t["conf"], t["area"]), reverse=True)
+
+    conservadas = por_confianza[:MAX_TORRES]
+    descartadas = por_confianza[MAX_TORRES:]
+
+    # Se vuelve al orden por posicion para numerarlas de forma estable
+    conservadas.sort(key=lambda t: (t["centro"][1], t["centro"][0]))
+    return conservadas, descartadas
+
+
 def dibujar_etiqueta(imagen, texto, ancla, escala, grosor):
     """
     Etiqueta con fondo solido y una linea guia hasta el punto.
@@ -75,7 +99,7 @@ def dibujar_etiqueta(imagen, texto, ancla, escala, grosor):
     clara u oscura.
     """
     alto_img, ancho_img = imagen.shape[:2]
-    margen = int(8 * escala) + 4
+    margen = 4
 
     (ancho_txt, alto_txt), base = cv2.getTextSize(
         texto, cv2.FONT_HERSHEY_SIMPLEX, escala, grosor)
@@ -84,7 +108,7 @@ def dibujar_etiqueta(imagen, texto, ancla, escala, grosor):
     caja_h = alto_txt + base + margen * 2
 
     # Por defecto arriba a la derecha del punto
-    desplaza = int(18 * escala) + 8
+    desplaza = 12
     x = ancla[0] + desplaza
     y = ancla[1] - desplaza - caja_h
 
@@ -102,44 +126,49 @@ def dibujar_etiqueta(imagen, texto, ancla, escala, grosor):
     destino_x = x if x > ancla[0] else x + caja_w
     destino_y = y + caja_h // 2
     cv2.line(imagen, ancla, (destino_x, destino_y), COLOR_PUNTO,
-             max(1, grosor - 1), cv2.LINE_AA)
+             1, cv2.LINE_AA)
 
     # Caja: sombra, relleno y borde
-    cv2.rectangle(imagen, (x + 2, y + 2), (x + caja_w + 2, y + caja_h + 2),
+    cv2.rectangle(imagen, (x + 1, y + 1), (x + caja_w + 1, y + caja_h + 1),
                   (0, 0, 0), -1)
     cv2.rectangle(imagen, (x, y), (x + caja_w, y + caja_h),
                   COLOR_ETIQUETA, -1)
     cv2.rectangle(imagen, (x, y), (x + caja_w, y + caja_h),
-                  COLOR_PUNTO, max(1, grosor - 1))
+                  COLOR_PUNTO, 1)
 
     cv2.putText(imagen, texto, (x + margen, y + margen + alto_txt),
                 cv2.FONT_HERSHEY_SIMPLEX, escala, COLOR_TEXTO,
                 grosor, cv2.LINE_AA)
 
 
-def dibujar(imagen, torres, ruta):
+def dibujar(imagen, torres, ruta, descartadas=()):
     """Silueta, centro de masa y etiqueta legible de cada torre."""
     alto, ancho = imagen.shape[:2]
 
     # El tamano del texto se adapta a la resolucion de la foto
-    escala = max(0.5, min(1.4, ancho / 1400))
-    grosor = max(1, int(round(escala * 1.8)))
-    radio = max(4, int(round(escala * 7)))
+    escala = max(0.32, min(0.62, ancho / 3000))
+    grosor = 1
+    radio = max(3, int(round(escala * 9)))
+
+    # Las descartadas se marcan en gris, para ver que se dejo fuera
+    for t in descartadas:
+        cv2.polylines(imagen, [t["poligono"]], True, (130, 130, 130),
+                      1, cv2.LINE_AA)
 
     for t in torres:
         cv2.polylines(imagen, [t["poligono"]], True, COLOR_SILUETA,
-                      max(2, grosor), cv2.LINE_AA)
+                      2, cv2.LINE_AA)
 
     for n, t in enumerate(torres, 1):
         x, y = t["centro"]
         p = (int(round(x)), int(round(y)))
 
         # Punto: circulo blanco relleno con anillo rojo, bien visible
-        cv2.circle(imagen, p, radio + 3, (255, 255, 255), -1, cv2.LINE_AA)
-        cv2.circle(imagen, p, radio + 3, COLOR_PUNTO, grosor, cv2.LINE_AA)
+        cv2.circle(imagen, p, radio + 2, (255, 255, 255), -1, cv2.LINE_AA)
+        cv2.circle(imagen, p, radio + 2, COLOR_PUNTO, grosor, cv2.LINE_AA)
         cv2.circle(imagen, p, max(1, radio - 3), COLOR_PUNTO, -1, cv2.LINE_AA)
 
-        dibujar_etiqueta(imagen, f"T{n}  ({p[0]}, {p[1]})", p, escala, grosor)
+        dibujar_etiqueta(imagen, f"T{n} ({p[0]},{p[1]})", p, escala, grosor)
 
     base = os.path.splitext(os.path.basename(ruta))[0]
     salida = f"torres_{base}.jpg"
@@ -155,10 +184,16 @@ def procesar(ruta, model):
 
     nombre = os.path.basename(ruta)
     resultado = model(ruta, conf=CONFIANZA, verbose=False)[0]
-    torres = centros_de_masa(resultado, model)
+    detectadas = centros_de_masa(resultado, model)
+    torres, descartadas = limitar_torres(detectadas)
 
     print(f"\n=== {nombre} ===")
-    print(f"Torres detectadas: {len(torres)}")
+    print(f"Torres detectadas: {len(detectadas)}")
+
+    if descartadas:
+        confs = ", ".join(f"{d['conf']:.2f}" for d in descartadas)
+        print(f"  [i] Maximo {MAX_TORRES}: se descartaron "
+              f"{len(descartadas)} de menor confianza ({confs}).")
 
     filas = []
     if torres:
@@ -177,7 +212,7 @@ def procesar(ruta, model):
     else:
         print("  [!] Ninguna torre detectada. Prueba bajando CONFIANZA.")
 
-    dibujar(imagen, torres, ruta)
+    dibujar(imagen, torres, ruta, descartadas)
     return filas
 
 
