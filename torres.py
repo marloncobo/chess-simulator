@@ -25,6 +25,7 @@ import sys
 import cv2
 import numpy as np
 from ultralytics import YOLO
+from reglas_deteccion import MAX_TORRES
 
 # ----- CONFIGURACION -----
 MODELO = "bestnano.pt"
@@ -33,9 +34,7 @@ CONFIANZA = 0.25
 CSV_SALIDA = "torres_detectadas.csv"
 EXTENSIONES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
-# En un tablero no puede haber mas de 4 torres. Si el modelo detecta
-# de mas, se conservan las de mayor confianza y el resto se descarta.
-MAX_TORRES = 4
+# Restricción del prototipo: conservar como máximo MAX_TORRES detecciones.
 
 # Colores en BGR (asi los maneja OpenCV)
 COLOR_SILUETA = (0, 255, 255)     # amarillo
