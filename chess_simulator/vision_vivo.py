@@ -2,8 +2,9 @@
 import cv2
 import numpy as np
 
-from seguimiento import Observacion, nombre
-from reglas_deteccion import MAX_TORRES
+from chess_simulator.seguimiento import Observacion, nombre
+from chess_simulator.reglas_deteccion import MAX_TORRES
+from chess_simulator.color_hsv import clasificar
 
 CLASES = {"TOWER": "T", "HORSE": "C", "BISHOP": "A", "QUEEN": "D", "KING": "R", "PAWN": "P"}
 
@@ -17,11 +18,12 @@ def homografia(esquinas):
     return cv2.getPerspectiveTransform(puntos, np.float32([[0, 0], [8, 0], [8, 8], [0, 8]]))
 
 
-def extraer(resultado, frame, punto="base"):
-    """Segmentación de todas las clases; el color se calibra fuera del modelo."""
+def extraer(resultado, frame, punto="base", parametros_hsv=None):
+    """Tipo por segmentación y color HSV sobre el interior de cada silueta."""
     detecciones = []
     if resultado.masks is None:
         return detecciones
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     for i, poligono in enumerate(resultado.masks.xy):
         clase = resultado.names[int(resultado.boxes.cls[i])]
         codigo = CLASES.get(clase)
@@ -46,7 +48,8 @@ def extraer(resultado, frame, punto="base"):
             apoyo = (x + float(np.median(xs[bajos])), y + float(np.median(ys[bajos])))
         detecciones.append({"pieza": codigo, "punto": apoyo,
                             "poligono": poligono,
-                            "conf": float(resultado.boxes.conf[i])})
+                            "conf": float(resultado.boxes.conf[i]),
+                            **clasificar(hsv, poligono, **(parametros_hsv or {}))})
     return detecciones
 
 
@@ -66,6 +69,8 @@ def construir_observacion(detecciones, esquinas, secuencia):
         candidatas.sort(key=lambda v: (-v[0]["conf"], v[0]["pieza"], v[1], v[2]))
         mejor, x, y = candidatas[0]
         razon = None
+        if mejor.get("color") == "DUDOSA":
+            razon = "Color dudoso"
         if mejor["conf"] < .5:
             razon = "Baja confianza"
         for otra, xo, yo in candidatas[1:]:
@@ -73,7 +78,7 @@ def construir_observacion(detecciones, esquinas, secuencia):
             # Duplicados prácticamente en el mismo apoyo: mismo tipo, o una
             # clasificación claramente superior. No trasladar sobrantes a
             # casillas vecinas ni escoger arbitrariamente entre dos apoyos.
-            duplicada = cerca and (otra["pieza"] == mejor["pieza"] or mejor["conf"]-otra["conf"] >= .15)
+            duplicada = cerca and ((otra["pieza"] == mejor["pieza"] and otra.get("color") == mejor.get("color")) or mejor["conf"]-otra["conf"] >= .15)
             if not duplicada:
                 razon = "Detecciones en conflicto"
         if razon:
@@ -81,13 +86,15 @@ def construir_observacion(detecciones, esquinas, secuencia):
             desconocidas.append(casilla)
             razones.append(f"{razon} en {casilla}")
             continue
-        codigo = "?" + mejor["pieza"]
+        color = mejor.get("color")
+        codigo = (mejor["pieza"] if color == "BLANCA" else
+                  mejor["pieza"].lower() if color == "NEGRA" else "?" + mejor["pieza"])
         vista[fila][col] = codigo
         piezas.append({"casilla": nombre(fila, col), "pieza": codigo})
         confianzas[nombre(fila, col)] = mejor["conf"]
     # Aplicar después de agrupar por casilla: duplicados de una misma torre no
     # deben consumir varias plazas, ni deben hacerlo detecciones fuera del tablero.
-    torres = sorted((p for p in piezas if p["pieza"] == "?T"),
+    torres = sorted((p for p in piezas if p["pieza"] in ("?T", "T", "t")),
                     key=lambda p: (-confianzas[p["casilla"]], p["casilla"]))
     excedentes = {p["casilla"] for p in torres[MAX_TORRES:]}
     if excedentes:

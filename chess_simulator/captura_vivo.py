@@ -29,7 +29,7 @@ def leer_ultimo(cola):
             return valor
 
 
-def capturar(source, backend, salida, parar):
+def capturar(source, backend, salida, parar, resolucion=None):
     import cv2
     salida.cancel_join_thread()
     api = {"auto": cv2.CAP_ANY, "msmf": cv2.CAP_MSMF, "dshow": cv2.CAP_DSHOW}[backend]
@@ -41,6 +41,9 @@ def capturar(source, backend, salida, parar):
                 ultimo(salida, {"error": f"No se pudo abrir source={source}. Acepte la notificación; reintentando."})
                 parar.wait(2)
                 continue
+            if resolucion is not None:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, resolucion[0])
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, resolucion[1])
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             while not parar.is_set():
                 ok, frame = cap.read()
@@ -54,11 +57,11 @@ def capturar(source, backend, salida, parar):
         parar.wait(1)
 
 
-def inferir(modelo, punto, entrada, salida, parar, confianza=.25):
+def inferir(modelo, punto, entrada, salida, parar, confianza=.25, parametros_hsv=None):
     salida.cancel_join_thread()
     try:
         from ultralytics import YOLO
-        from vision_vivo import extraer
+        from chess_simulator.vision_vivo import extraer
         red = YOLO(modelo)
         while not parar.is_set():
             try:
@@ -73,22 +76,22 @@ def inferir(modelo, punto, entrada, salida, parar, confianza=.25):
             # Un tablero tiene como máximo 32 piezas; 64 deja margen sin
             # descartar detecciones por una cota artificialmente pequeña.
             resultado = red(frame, conf=confianza, max_det=64, verbose=False)[0]
-            detecciones = extraer(resultado, frame, punto)
+            detecciones = extraer(resultado, frame, punto, parametros_hsv)
             ultimo(salida, {**paquete, "detecciones": detecciones, "inferencia": time.monotonic()-inicio})
     except Exception as error:
         ultimo(salida, {"error": f"Error de inferencia: {error}"})
 
 
 class FlujoVivo:
-    def __init__(self, modelo, source=1, backend="auto", punto="base", confianza=.25):
+    def __init__(self, modelo, source=1, backend="auto", punto="base", confianza=.25, resolucion=None, parametros_hsv=None):
         self.ctx = mp.get_context("spawn")
         self.parar = self.ctx.Event()
         self.frames = self.ctx.Queue(1)
         self.pendientes = self.ctx.Queue(1)
         self.resultados = self.ctx.Queue(1)
         self.procesos = [
-            self.ctx.Process(target=capturar, args=(source, backend, self.frames, self.parar), daemon=True),
-            self.ctx.Process(target=inferir, args=(str(modelo), punto, self.pendientes, self.resultados, self.parar, confianza), daemon=True),
+            self.ctx.Process(target=capturar, args=(source, backend, self.frames, self.parar, resolucion), daemon=True),
+            self.ctx.Process(target=inferir, args=(str(modelo), punto, self.pendientes, self.resultados, self.parar, confianza, parametros_hsv), daemon=True),
         ]
 
     def iniciar(self):

@@ -9,3 +9,10 @@ metricas/v1-4/weights/
 /calibracion_camara_*.json
 /observacion.json
 /torres_*.jpg
+
+# Configuración y datos producidos localmente
+/config/*.json
+/datos/observacion.json
+/resultados/*.csv
+/resultados/*.jpg
+/resultados/*.png

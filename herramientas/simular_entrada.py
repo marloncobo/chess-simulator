@@ -2,7 +2,7 @@
 import argparse
 import time
 
-from entrada import crear_observacion, publicar
+from chess_simulator.entrada import crear_observacion, publicar
 
 
 def main():

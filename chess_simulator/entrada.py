@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import time
 
-from seguimiento import Observacion, nombre
+from chess_simulator.seguimiento import Observacion, nombre
 
 
 def crear_observacion(posicion, secuencia, completa=True, confianza=1.0):

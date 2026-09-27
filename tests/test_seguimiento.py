@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from entrada import EntradaArchivo, publicar
-from seguimiento import Observacion, Seguimiento, detectar_movimiento, indices
+from chess_simulator.entrada import EntradaArchivo, publicar
+from chess_simulator.seguimiento import Observacion, Seguimiento, detectar_movimiento, indices
 
 
 def observacion(secuencia, piezas, completa=True, confianza=1):
@@ -190,7 +190,7 @@ class PruebasSeguimiento(unittest.TestCase):
                     raise PermissionError("Archivo abierto por el lector")
                 reemplazar(origen, destino)
 
-            with patch("entrada.os.replace", side_effect=bloqueado):
+            with patch("chess_simulator.entrada.os.replace", side_effect=bloqueado):
                 publicar(ruta, datos)
             self.assertEqual(len(intentos), 3)
             self.assertEqual(EntradaArchivo(ruta).leer().secuencia, 1)

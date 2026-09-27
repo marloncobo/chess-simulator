@@ -4,8 +4,9 @@ import time
 
 import pygame
 
-from entrada import EntradaArchivo
-from seguimiento import Seguimiento, indices
+from chess_simulator.rutas import OBSERVACION
+from chess_simulator.entrada import EntradaArchivo
+from chess_simulator.seguimiento import Seguimiento, indices
 
 # ----- CONFIGURACION -----
 CASILLA = 80                    # pixeles por casilla
@@ -53,8 +54,8 @@ def dibujar_piezas(pantalla, fuente, posicion):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Tablero conectado a observaciones externas")
     parser.add_argument("--entrada", type=Path,
-                        default=Path(__file__).resolve().with_name("observacion.json"),
-                        help="Archivo JSON publicado por el detector (por defecto junto al programa)")
+                        default=OBSERVACION,
+                        help="Archivo JSON publicado por el detector (por defecto datos/observacion.json)")
     parser.add_argument("--duracion", type=float, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     pygame.init()

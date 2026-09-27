@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from main import main, proyectar
+from chess_simulator.main import main, proyectar
 
 
 class PruebasMain(unittest.TestCase):
@@ -41,7 +41,7 @@ class PruebasMain(unittest.TestCase):
                       [(0, 0), (800, 0), (800, 800), (0, 800)])
 
     def test_delega_entrada_al_seguimiento_existente(self):
-        with patch("tablero_pygame.main") as ejecutar:
+        with patch("chess_simulator.tablero_pygame.main") as ejecutar:
             main(["--entrada", "observacion.json"])
             ejecutar.assert_called_once_with(["--entrada", "observacion.json"])
 

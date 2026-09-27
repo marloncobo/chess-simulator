@@ -11,10 +11,10 @@ donde M00 es el area de la mascara. Devuelve las coordenadas en
 pixeles de la imagen, sin suponer nada sobre donde esta cada torre.
 
 Uso:
-    python3 torres.py foto.jpg
-    python3 torres.py fotos/
-    python3 torres.py foto1.jpg foto2.jpg
-    python3 torres.py                   -> usa prueba.jpeg
+    python -m chess_simulator.torres foto.jpg
+    python -m chess_simulator.torres fotos/
+    python -m chess_simulator.torres foto1.jpg foto2.jpg
+    python -m chess_simulator.torres                   -> usa datos/imagenes/torres.jpeg
 """
 
 import csv
@@ -25,13 +25,14 @@ import sys
 import cv2
 import numpy as np
 from ultralytics import YOLO
-from reglas_deteccion import MAX_TORRES
+from chess_simulator.rutas import MODELO as MODELO_PREDETERMINADO, RESULTADOS, IMAGENES
+from chess_simulator.reglas_deteccion import MAX_TORRES
 
 # ----- CONFIGURACION -----
-MODELO = "bestnano.pt"
+MODELO = str(MODELO_PREDETERMINADO)
 CLASE_TORRE = "TOWER"
 CONFIANZA = 0.25
-CSV_SALIDA = "torres_detectadas.csv"
+CSV_SALIDA = RESULTADOS / "torres_detectadas.csv"
 EXTENSIONES = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 # Restricción del prototipo: conservar como máximo MAX_TORRES detecciones.
@@ -170,7 +171,8 @@ def dibujar(imagen, torres, ruta, descartadas=()):
         dibujar_etiqueta(imagen, f"T{n} ({p[0]},{p[1]})", p, escala, grosor)
 
     base = os.path.splitext(os.path.basename(ruta))[0]
-    salida = f"torres_{base}.jpg"
+    RESULTADOS.mkdir(parents=True, exist_ok=True)
+    salida = str(RESULTADOS / f"torres_{base}.jpg")
     cv2.imwrite(salida, imagen)
     print(f"  -> {salida}")
 
@@ -217,7 +219,7 @@ def procesar(ruta, model):
 
 def recolectar_rutas(argumentos):
     if not argumentos:
-        return ["prueba.jpeg"]
+        return [str(IMAGENES / "torres.jpeg")]
 
     rutas = []
     for arg in argumentos:

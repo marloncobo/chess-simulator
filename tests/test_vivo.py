@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 import numpy as np
 
-from captura_vivo import capturar, leer_ultimo, ultimo
-from seguimiento import Seguimiento, SeguimientoPorCasilla, Observacion
-from tiempo_real import guardar_calibracion, cargar_calibracion
-from vision_vivo import FiltroEscena, construir_observacion, extraer
+from chess_simulator.captura_vivo import capturar, leer_ultimo, ultimo
+from chess_simulator.seguimiento import Seguimiento, SeguimientoPorCasilla, Observacion
+from chess_simulator.tiempo_real import guardar_calibracion, cargar_calibracion
+from chess_simulator.vision_vivo import FiltroEscena, construir_observacion, extraer
 
 ESQUINAS = [(0, 0), (800, 0), (800, 800), (0, 800)]
 

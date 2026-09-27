@@ -1,7 +1,7 @@
 """Estado y confirmación temporal; independiente de cámara, YOLO y Pygame."""
 from dataclasses import dataclass
 import math
-from reglas_deteccion import MAX_TORRES
+from chess_simulator.reglas_deteccion import MAX_TORRES
 
 PIEZAS = frozenset("tcardpTCARDP") | frozenset("?" + p for p in "TCARDP")
 
@@ -209,10 +209,11 @@ class SeguimientoPorCasilla(Seguimiento):
     Las celdas desconocidas conservan su último estado. Las ausencias requieren
     más tiempo para no borrar una pieza por un fallo breve de segmentación.
     """
-    def __init__(self, estabilidad=.6, minimo_muestras=3, timeout=3, espera_vacio=1.5):
+    def __init__(self, estabilidad=.6, minimo_muestras=3, timeout=3, espera_vacio=1.5, ventana_movimiento=10.):
         self.pendientes = {}
         self.dudosas = frozenset()
         self.espera_vacio = espera_vacio
+        self.ventana_movimiento = ventana_movimiento
         self.ancla = None
         self.desde_cambio = None
         self.confianzas_confirmadas = {}
@@ -224,10 +225,16 @@ class SeguimientoPorCasilla(Seguimiento):
         super()._limpiar()
         self.pendientes.clear()
 
-    def invalidar(self, mensaje):
+    def invalidar(self, mensaje, conservar_movimiento=False, ahora=None):
         super().invalidar(mensaje)
-        self.ancla = self.posicion
-        self.desde_cambio = None
+        if conservar_movimiento:
+            # Una imagen reciente con movimiento no es una desconexión.
+            if ahora is not None:
+                self.ultima_recepcion = ahora
+        else:
+            self.ancla = self.posicion
+            self.desde_cambio = None
+            self.ultimo_movimiento = None
 
     def recibir(self, observacion, ahora):
         self.comprobar_conexion(ahora)
@@ -235,9 +242,13 @@ class SeguimientoPorCasilla(Seguimiento):
             return None
         self.ultima_secuencia = observacion.secuencia
         self.ultima_recepcion = ahora
+        # Caducidad medida desde el primer cambio, no desde cada fluctuación.
+        if self.desde_cambio is not None and ahora-self.desde_cambio > self.ventana_movimiento:
+            self.ancla, self.desde_cambio = self.posicion, None
+            self.ultimo_movimiento = None
         # Incompleta sin localización de la duda: oclusión general/entrada externa.
         if (not observacion.completa and not observacion.desconocidas) or observacion.confianza < self.confianza_minima:
-            self.invalidar("Observación incompleta o poco fiable")
+            self.invalidar("Observación incompleta o poco fiable", conservar_movimiento=True)
             return None
         self.dudosas = observacion.desconocidas
         antes = self.posicion
@@ -292,15 +303,15 @@ class SeguimientoPorCasilla(Seguimiento):
         movimiento = None
         if hubo_confirmacion and despues != antes:
             self.posicion = despues
-            self.ultimo_movimiento = None
             if antes is None:
                 self.ancla = despues
             else:
                 if self.ancla is None:
                     self.ancla = antes
-                movimiento = detectar_movimiento(self.ancla, despues) if not sobrantes else None
+                movimiento = detectar_movimiento(self.ancla, despues, self.ultimo_movimiento) if not sobrantes else None
                 if sobrantes:
                     self.ancla = despues
+                    self.ultimo_movimiento = None
                 if movimiento and not any(
                     celda in self.dudosas for celda in (indices(movimiento.origen), indices(movimiento.destino))
                 ):
@@ -309,9 +320,11 @@ class SeguimientoPorCasilla(Seguimiento):
                     self.ancla = despues
                 else:
                     movimiento = None
-                self.desde_cambio = ahora
-        if self.desde_cambio is not None and ahora-self.desde_cambio > self.espera_vacio:
-            self.ancla, self.desde_cambio = self.posicion, None
+                if movimiento or sobrantes:
+                    self.desde_cambio = None
+                elif self.desde_cambio is None:
+                    self.desde_cambio = ahora
         self.estado = (f"{len(self.dudosas)} casillas dudosas; el resto se actualiza" if self.dudosas
-                       else ("Confirmando cambios por casilla" if self.pendientes else "Posición confirmada"))
+                       else ("Confirmando cambios por casilla" if self.pendientes else
+                             "Esperando completar el movimiento" if self.desde_cambio is not None else "Posición confirmada"))
         return movimiento

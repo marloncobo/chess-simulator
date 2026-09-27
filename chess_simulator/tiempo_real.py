@@ -1,4 +1,4 @@
-"""Interfaz de cámara, calibración interactiva y estado temporal sin color."""
+"""Interfaz de cámara, calibración interactiva y estado temporal con color HSV."""
 import json
 from pathlib import Path
 import time
@@ -7,15 +7,17 @@ import cv2
 import numpy as np
 import pygame
 
-from captura_vivo import FlujoVivo, leer_ultimo, ultimo
-from seguimiento import SeguimientoPorCasilla
-from tablero_pygame import LADO, CASILLA, dibujar_tablero, dibujar_piezas
-from vision_vivo import FiltroEscena, construir_observacion, homografia
+from chess_simulator.captura_vivo import FlujoVivo, leer_ultimo, ultimo
+from chess_simulator.rutas import CONFIG
+from chess_simulator.seguimiento import SeguimientoPorCasilla
+from chess_simulator.tablero_pygame import LADO, CASILLA, dibujar_tablero, dibujar_piezas
+from chess_simulator.vision_vivo import FiltroEscena, construir_observacion, homografia
 
 
 def guardar_calibracion(ruta, source, resolucion, esquinas):
     homografia(esquinas)
     datos = {"source": source, "resolucion": list(resolucion), "esquinas": esquinas}
+    Path(ruta).parent.mkdir(parents=True, exist_ok=True)
     Path(ruta).write_text(json.dumps(datos, indent=2), encoding="utf-8")
 
 
@@ -27,7 +29,7 @@ def cargar_calibracion(ruta, source, resolucion):
     return datos["esquinas"]
 
 
-def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, confianza=.25):
+def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, confianza=.25, parametros_hsv=None):
     pygame.init()
     pantalla = pygame.display.set_mode((1200, 820))
     pygame.display.set_caption(f"Ajedrez en tiempo real · source={source}")
@@ -35,7 +37,7 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
     texto = pygame.font.SysFont("arial", 17)
     tablero = pygame.Surface((LADO, LADO))
     reloj = pygame.time.Clock()
-    flujo = FlujoVivo(modelo, source, backend, punto, confianza)
+    flujo = FlujoVivo(modelo, source, backend, punto, confianza, parametros_hsv=parametros_hsv)
     seguimiento = SeguimientoPorCasilla()
     filtro = FiltroEscena()
     frame, congelada, paquete, resultado = None, None, None, None
@@ -52,7 +54,7 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
     limite_calibracion = 0.
     historial_visible = []
     ultimo_diagnostico = None
-    calibracion = Path(__file__).resolve().with_name(f"calibracion_camara_{source}.json")
+    calibracion = CONFIG / f"calibracion_camara_{source}.json"
     inicio = time.monotonic()
     # No se cambia a source=0 si el celular no responde.
     print(f"Abriendo únicamente source={source}; acepte la notificación en el celular.", flush=True)
@@ -154,7 +156,8 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                             salida["detecciones"], esquinas, salida["secuencia"])
                         quieta = filtro.estable(salida["frame"], esquinas)
                         if not quieta:
-                            seguimiento.invalidar("Movimiento u oclusión; esperando imagen estable")
+                            seguimiento.invalidar("Movimiento u oclusión; esperando imagen estable",
+                                                  conservar_movimiento=True, ahora=ahora)
                         else:
                             movimiento = seguimiento.recibir(obs, ahora)
                             if movimiento:
@@ -205,8 +208,11 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                 if resultado and ahora-resultado["instante"] < 1 and congelada is None:
                     for d in resultado["detecciones"]:
                         xy = en_pantalla(d["punto"])
-                        pygame.draw.circle(pantalla, (240, 120, 50), xy, 4)
-                        pantalla.blit(texto.render(d["pieza"], True, (250, 130, 40)), xy)
+                        color = d.get("color", "DUDOSA")
+                        tinta = {"BLANCA": (80, 230, 80), "NEGRA": (50, 170, 255)}.get(color, (255, 180, 0))
+                        pygame.draw.circle(pantalla, tinta, xy, 4)
+                        etiqueta = d["pieza"] + {"BLANCA": " B", "NEGRA": " N"}.get(color, " ?")
+                        pantalla.blit(texto.render(etiqueta, True, tinta), xy)
             dibujar_tablero(tablero)
             if seguimiento.posicion is not None:
                 dibujar_piezas(tablero, fuente, seguimiento.posicion)
@@ -221,9 +227,10 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                 (10, 10, estado_camara),
                 (10, 35, "Vértices exteriores: a8 > h8 > h1 > a1 (clics)."),
                 (10, 60, "R: recalibrar · G: guardar · L: cargar calibración"),
-                (560, 10, "POSICIÓN DETECTADA · piezas sin distinguir color"),
+                (560, 10, "POSICIÓN DETECTADA · blancas y negras (HSV)"),
                 (10, 712, estado[:130]),
                 (10, 738, "Espacio: pausa · S: nueva posición inicial · Esc: cerrar cámara"),
+                (10, 792, "Color en cámara: verde = blanca · azul = negra · naranja = dudosa"),
                 (10, 766, historial_visible[-1] if historial_visible else "Esperando un movimiento confirmado"),
                 (560, 36, f"Inferencia: {resultado['inferencia']*1000:.0f} ms" if resultado else "Cargando detector..."),
             ]
