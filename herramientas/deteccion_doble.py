@@ -3,7 +3,6 @@ import hashlib
 import json
 import multiprocessing as mp
 import time
-import unicodedata
 
 import cv2
 import numpy as np
@@ -13,8 +12,10 @@ from chess_simulator.captura_vivo import ultimo, leer_ultimo
 from chess_simulator.detector_doble import inferir_par
 from chess_simulator.fusion_camaras import observar_vista, fusionar, par_valido
 from chess_simulator.rutas import CONFIG
-from chess_simulator.seguimiento import SeguimientoPorCasilla, nombre
+from chess_simulator.seguimiento import SeguimientoPorCasilla
 from chess_simulator.vision_vivo import FiltroEscena, homografia
+from chess_simulator.diagnostico import diagnosticar
+from herramientas.panel_diagnostico import panel_inferior, panel_ayuda
 
 
 VENTANA = "Dos camaras - deteccion y tablero compartido"
@@ -66,6 +67,8 @@ class SesionDoble:
         self.ultimas = [None, None]
         self.procedencias = {}
         self.observacion = None
+        self.casillas = {}
+        self.ayuda = False
         self.mensaje = "Pulse 1 y calibre la camara 1; despues pulse 2 para la camara 2"
         self.movimiento = "Sin movimientos confirmados"
         self.inferencia = 0.
@@ -74,6 +77,7 @@ class SesionDoble:
         self.revision += 1
         self.ultimas = [None, None]
         self.procedencias = {}
+        self.casillas = {}
         self.filtros = [FiltroEscena(), FiltroEscena()]
         self.seguimiento.invalidar("Esperando nuevas vistas estables")
 
@@ -159,6 +163,7 @@ class SesionDoble:
         observaciones = [observar_vista(v["detecciones"], e, self.secuencia)
                          for v, e in zip(vistas, self.esquinas)]
         self.observacion, self.procedencias = fusionar(observaciones, self.secuencia)
+        self.casillas = diagnosticar(observaciones, self.observacion)
         movimiento = self.seguimiento.recibir(self.observacion, ahora)
         if movimiento:
             self.movimiento = movimiento.texto()
@@ -202,41 +207,12 @@ class SesionDoble:
             texto(vista, "CALIBRANDO (imagen fija)" if self.seleccion == i else
                   ("Calibrada" if len(self.esquinas[i]) == 4 else f"Pulse {i+1} para calibrar"), (12, 110))
             paneles.append(vista)
-        abajo = np.full((450, 1280, 3), 25, np.uint8)
-        posicion = self.seguimiento.posicion
-        for f in range(8):
-            for c in range(8):
-                x, y = 30+c*48, 25+f*48
-                color = (180, 210, 235) if (f+c)%2 == 0 else (90, 130, 160)
-                cv2.rectangle(abajo, (x, y), (x+47, y+47), color, -1)
-                pieza = posicion[f][c] if posicion else ""
-                if pieza:
-                    cv2.circle(abajo, (x+24, y+23), 17, (240, 240, 240) if pieza.isupper() else (30, 30, 30), -1)
-                    texto(abajo, pieza.upper(), (x+15, y+30), .7,
-                          (20, 20, 20) if pieza.isupper() else (245, 245, 245))
-                if (f, c) in self.seguimiento.dudosas:
-                    cv2.rectangle(abajo, (x+1, y+1), (x+46, y+46), (0, 140, 255), 3)
-                if self.observacion and pieza and pieza == self.observacion.tablero[f][c]:
-                    origen = self.procedencias.get(nombre(f, c), "")
-                    texto(abajo, origen, (x+2, y+45), .3, (70, 40, 20))
-        for n in range(8):
-            texto(abajo, str(8-n), (8, 56+n*48))
-            texto(abajo, "abcdefgh"[n], (48+n*48, 430))
-        lineas = ["TABLERO COMBINADO - piezas confirmadas",
-                  "1 / 2: calibrar cada camara (imagen fija)",
-                  "Clics: a8 > h8 > h1 > a1, mismas esquinas fisicas",
-                  "L: cargar calibraciones SOLO si no movio las camaras",
-                  "R: reconectar | S: nueva posicion | Q/Esc: salir",
-                  "T torre | C caballo | A alfil | D dama | R rey | P peon",
-                  "Borde naranja: duda; conserva el estado anterior",
-                  "Origen 1, 2 o 1+2 debajo de la pieza",
-                  f"Inferencia de ambas vistas: {self.inferencia*1000:.0f} ms",
-                  self.mensaje[:98], self.movimiento[:98],
-                  "La coincidencia de lecturas no garantiza sincronizacion real"]
-        for n, linea in enumerate(lineas):
-            # OpenCV no incluye glifos acentuados en esta fuente.
-            linea = unicodedata.normalize("NFKD", linea).encode("ascii", "ignore").decode()
-            texto(abajo, linea, (445, 28+n*35), .5)
+        if self.ayuda:
+            abajo = panel_ayuda()
+        else:
+            abajo = panel_inferior(self.seguimiento.posicion, self.casillas,
+                                   self.seguimiento.dudosas, self.inferencia,
+                                   self.mensaje, self.movimiento)
         return np.vstack([np.hstack(paneles), abajo])
 
 
@@ -303,6 +279,8 @@ def ejecutar(args):
             elif tecla in (ord("r"), ord("R")):
                 for camara in camaras:
                     camara.reiniciar(time.monotonic())
+            elif tecla in (ord("h"), ord("H")):
+                sesion.ayuda = not sesion.ayuda
             elif tecla in (ord("s"), ord("S")):
                 sesion.seguimiento = SeguimientoPorCasilla(espera_vacio=2.)
                 sesion.movimiento = "Sin movimientos confirmados"
