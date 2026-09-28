@@ -30,7 +30,7 @@ USO
       da permiso a la camara
 
   Terminal 2, cualquiera de las dos:
-      yolo predict model=bestnano.pt source="http://127.0.0.1:5002/stream" show=True imgsz=320
+      yolo predict model=modelos/bestnano.pt source="http://127.0.0.1:5002/stream" show=True imgsz=320
       python3 torres_vivo.py http://127.0.0.1:5002/stream
 """
 
