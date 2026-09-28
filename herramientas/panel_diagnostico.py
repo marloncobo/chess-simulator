@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from chess_simulator.seguimiento import nombre
+from herramientas.tablero_diagnostico import dibujar as dibujar_pygame
 from chess_simulator.diagnostico import (
     AMBAS, RESCATE_1, RESCATE_2, SOLO_1, SOLO_2, CONFLICTO, CIEGAS,
     contar_clases, problemas, resumen,
@@ -67,53 +68,11 @@ def _rayado(img, x0, y0, lado, color, paso=7):
 
 
 def dibujar_tablero(lienzo, posicion, casillas, dudosas):
-    ox, oy = MARGEN_X, MARGEN_Y
-
-    for f in range(8):
-        for c in range(8):
-            x, y = ox + c * CASILLA, oy + f * CASILLA
-            base = CLARA if (f + c) % 2 == 0 else OSCURA
-            cv2.rectangle(lienzo, (x, y), (x + CASILLA - 1, y + CASILLA - 1), base, -1)
-
-            info = casillas.get((f, c)) if casillas else None
-            estado = info["estado"] if info else None
-            color = COLOR.get(estado)
-
-            if estado == CIEGAS:
-                _rayado(lienzo, x, y, CASILLA - 1, (70, 70, 72))
-
-            pieza = posicion[f][c] if posicion else ""
-            if pieza:
-                clara = pieza.lstrip("?").isupper()
-                cv2.circle(lienzo, (x + CASILLA // 2, y + CASILLA // 2 - 1), 16,
-                           (238, 238, 238) if clara else (28, 28, 28), -1, cv2.LINE_AA)
-                cv2.circle(lienzo, (x + CASILLA // 2, y + CASILLA // 2 - 1), 16,
-                           (120, 120, 120), 1, cv2.LINE_AA)
-                letra = pieza.lstrip("?").upper()
-                (tw, th), _ = cv2.getTextSize(letra, cv2.FONT_HERSHEY_SIMPLEX, .62, 2)
-                _txt(lienzo, letra,
-                     (x + (CASILLA - tw) // 2, y + (CASILLA + th) // 2 - 1), .62,
-                     (20, 20, 20) if clara else (246, 246, 246), 2)
-
-            # El recuadro dice el estado; la insignia lo abrevia
-            if color and estado != AMBAS:
-                cv2.rectangle(lienzo, (x + 1, y + 1),
-                              (x + CASILLA - 2, y + CASILLA - 2), color, 2)
-                marca = INSIGNIA.get(estado, "")
-                if marca:
-                    cv2.rectangle(lienzo, (x + CASILLA - 17, y + 1),
-                                  (x + CASILLA - 2, y + 14), color, -1)
-                    _txt(lienzo, marca, (x + CASILLA - 16, y + 12), .34, (10, 10, 10), 1)
-            elif estado == AMBAS:
-                cv2.circle(lienzo, (x + 7, y + 7), 3, COLOR[AMBAS], -1, cv2.LINE_AA)
-            elif (f, c) in (dudosas or ()):
-                cv2.rectangle(lienzo, (x + 1, y + 1),
-                              (x + CASILLA - 2, y + CASILLA - 2), (0, 140, 255), 2)
-
-    for n in range(8):
-        _txt(lienzo, str(8 - n), (ox - 18, oy + n * CASILLA + 31), .42, TENUE)
-        _txt(lienzo, "abcdefgh"[n], (ox + n * CASILLA + 21, oy + BOARD_W + 17), .42, TENUE)
-    cv2.rectangle(lienzo, (ox, oy), (ox + BOARD_W, oy + BOARD_W), (60, 62, 66), 1)
+    """Pega el tablero de pygame, el mismo motor grafico del main."""
+    tablero = dibujar_pygame(posicion, casillas, dudosas,
+                             casilla_px=CASILLA, margen=(MARGEN_X, MARGEN_Y))
+    alto, ancho = tablero.shape[:2]
+    lienzo[0:min(alto, ALTO), 0:ancho] = tablero[0:min(alto, ALTO)]
 
 
 def dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimiento):
