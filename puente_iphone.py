@@ -43,9 +43,9 @@ from flask import Flask, Response, request, render_template_string
 # ----- CONFIGURACION -----
 PUERTO_IPHONE = 5001     # https, para Safari
 PUERTO_STREAM = 5002     # http, para OpenCV / YOLO
-CALIDAD = 0.6            # calidad del JPEG que envia el iPhone (0 a 1)
-ANCHO = 640
-ALTO = 480
+CALIDAD = 0.85           # conserva más detalle para distinguir las piezas
+ANCHO = 1280            # resolución preferida; Safari negocia la disponible
+ALTO = 720
 # -------------------------
 
 # Ultimo cuadro recibido del iPhone
@@ -62,14 +62,30 @@ PAGINA = """
   <style>
     body { margin:0; background:#111; color:#eee;
            font-family:-apple-system,sans-serif; text-align:center; }
-    video { width:100%; max-width:640px; }
+    video { width:100%; max-height:70vh; object-fit:contain; }
+    .controles { padding:12px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    select, button { padding:10px; font-size:16px; border-radius:8px; }
+    .nota { padding:0 16px; color:#bbb; font-size:14px; }
     #estado { padding:10px; font-size:15px; }
     .ok { color:#6ed86e; }
     .error { color:#ff7b6e; }
   </style>
 </head>
 <body>
+  <div class="controles">
+    <label>Resolución
+      <select id="resolucion">
+        <option value="1280x720" selected>HD · 720p</option>
+        <option value="1920x1080">Full HD · 1080p</option>
+        <option value="640x480">480p · menor consumo</option>
+      </select>
+    </label>
+    <button id="reconectar" type="button">Reconectar cámara</button>
+  </div>
+  <p class="nota">Coloca el iPhone horizontal para aprovechar el ancho de la vista en el PC.
+    Después de cambiar resolución u orientación, vuelve a calibrar esa cámara.</p>
   <p id="estado">Iniciando camara...</p>
+  <p id="detalle" class="nota"></p>
   <video id="cam" autoplay playsinline muted></video>
   <canvas id="lienzo" style="display:none"></canvas>
 
@@ -77,51 +93,182 @@ PAGINA = """
 const video  = document.getElementById('cam');
 const lienzo = document.getElementById('lienzo');
 const estado = document.getElementById('estado');
+const detalle = document.getElementById('detalle');
+const resolucion = document.getElementById('resolucion');
 const ctx = lienzo.getContext('2d');
 let enviados = 0;
+let pista = null;
+let ajustes = Promise.resolve();
+let aviso = '';
+let bloqueoPantalla = null;
+let solicitandoBloqueo = false;
+resolucion.value = '{{ ancho }}x{{ alto }}';
+if (!resolucion.value) resolucion.value = '1280x720';
 
-// facingMode environment = camara trasera
-navigator.mediaDevices.getUserMedia({
-  video: { facingMode: { ideal: 'environment' },
-           width: {{ ancho }}, height: {{ alto }} },
-  audio: false
-}).then(stream => {
-  video.srcObject = stream;
-  video.onloadedmetadata = () => {
-    lienzo.width  = video.videoWidth;
-    lienzo.height = video.videoHeight;
-    estado.textContent = 'Transmitiendo al PC...';
-    estado.className = 'ok';
-    enviar();
+function restricciones() {
+  const [ancho, alto] = resolucion.value.split('x').map(Number);
+  const vertical = window.matchMedia('(orientation: portrait)').matches;
+  return {
+    facingMode: { ideal: 'environment' },
+    width: { ideal: vertical ? alto : ancho },
+    height: { ideal: vertical ? ancho : alto },
+    frameRate: { ideal: 30, max: 30 }
   };
-}).catch(e => {
-  estado.textContent = 'Error de camara: ' + e.message;
-  estado.className = 'error';
+}
+
+function ajustarLienzo() {
+  // Safari puede cambiar las dimensiones al girar o aplicar restricciones.
+  // Usar siempre la imagen real evita estirar, recortar o ampliar píxeles.
+  const ancho = video.videoWidth, alto = video.videoHeight;
+  if (!ancho || !alto) return false;
+  if (lienzo.width !== ancho || lienzo.height !== alto) {
+    lienzo.width = ancho;
+    lienzo.height = alto;
+  }
+  detalle.textContent = `Enviando ${ancho} × ${alto} · ${ancho >= alto ? 'horizontal' : 'vertical'}${aviso}`;
+  return true;
+}
+
+function aplicarResolucion() {
+  // Serializar los cambios evita que una rotación sobrescriba un ajuste nuevo.
+  ajustes = ajustes.then(async () => {
+    if (!pista) return;
+    try {
+      await conLimite(pista.applyConstraints(restricciones()), 3000, 'Ajuste de resolución detenido');
+      aviso = '';
+    } catch (error) {
+      aviso = ' · No se pudo aplicar el cambio; se conserva la resolución disponible';
+    }
+    ajustarLienzo();
+  });
+  return ajustes;
+}
+
+resolucion.addEventListener('change', aplicarResolucion);
+video.addEventListener('resize', ajustarLienzo);
+let giro;
+window.addEventListener('orientationchange', () => {
+  clearTimeout(giro);
+  giro = setTimeout(aplicarResolucion, 400);
 });
 
-function enviar() {
-  ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
-  lienzo.toBlob(blob => {
-    fetch('/subir', { method: 'POST', body: blob })
-      .then(() => {
-        enviados++;
-        if (enviados % 15 === 0) {
-          estado.textContent = 'Transmitiendo  (' + enviados + ' cuadros)';
-        }
-        enviar();
-      })
-      .catch(() => {
-        estado.textContent = 'Se perdio la conexion. Reintentando...';
-        estado.className = 'error';
-        setTimeout(enviar, 1000);
-      });
-  }, 'image/jpeg', {{ calidad }});
+const esperar = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function conLimite(promesa, ms, mensaje) {
+  let temporizador;
+  try {
+    return await Promise.race([promesa, new Promise((_, reject) => {
+      temporizador = setTimeout(() => reject(new Error(mensaje)), ms);
+    })]);
+  } finally {
+    clearTimeout(temporizador);
+  }
 }
 
-// Evitar que la pantalla se apague y corte la camara
-if ('wakeLock' in navigator) {
-  navigator.wakeLock.request('screen').catch(() => {});
+function detenerCamara() {
+  if (video.srcObject) video.srcObject.getTracks().forEach(track => track.stop());
+  pista = null;
+  video.srcObject = null;
 }
+
+async function mantenerPantalla() {
+  if (document.hidden || !('wakeLock' in navigator) || bloqueoPantalla || solicitandoBloqueo) return;
+  solicitandoBloqueo = true;
+  try {
+    const bloqueo = await navigator.wakeLock.request('screen');
+    bloqueoPantalla = bloqueo;
+    bloqueo.addEventListener('release', () => {
+      if (bloqueoPantalla === bloqueo) bloqueoPantalla = null;
+    });
+  } catch (error) {
+    // Safari puede denegarlo, por ejemplo con ahorro de batería.
+  } finally {
+    solicitandoBloqueo = false;
+  }
+}
+
+document.getElementById('reconectar').addEventListener('click', detenerCamara);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) detenerCamara();
+  else mantenerPantalla();
+});
+window.addEventListener('pagehide', detenerCamara);
+window.addEventListener('pageshow', mantenerPantalla);
+
+async function enviar() {
+  let tiempoVideo = -1;
+  let ultimoAvance = performance.now();
+  while (pista && pista.readyState === 'live' && !document.hidden) {
+    // readyState puede seguir siendo live aunque Safari deje de producir vídeo.
+    if (video.readyState >= 2 && video.currentTime !== tiempoVideo) {
+      tiempoVideo = video.currentTime;
+      ultimoAvance = performance.now();
+    } else if (performance.now() - ultimoAvance > 6000) {
+      throw new Error('El vídeo dejó de avanzar');
+    }
+    if (video.readyState < 2 || !ajustarLienzo()) {
+      await esperar(100);
+      continue;
+    }
+    ctx.drawImage(video, 0, 0, lienzo.width, lienzo.height);
+    // toBlob también puede quedarse pendiente; antes paralizaba todo el bucle.
+    const blob = await conLimite(new Promise(resolve => lienzo.toBlob(resolve, 'image/jpeg', {{ calidad }})),
+                                3000, 'La captura de imagen no responde');
+    if (!blob) throw new Error('No se pudo capturar el cuadro');
+    if (!pista || document.hidden) break;
+    const controlador = new AbortController();
+    try {
+      const respuesta = await conLimite(fetch('/subir', { method: 'POST', body: blob, signal: controlador.signal }),
+                                        8000, 'El envío no responde');
+      if (!respuesta.ok) throw new Error('El PC no pudo recibir el cuadro');
+      enviados++;
+      estado.textContent = `Transmitiendo al PC · ${enviados} cuadros`;
+      estado.className = 'ok';
+      // Un solo envío pendiente: la red marca el ritmo sin acumular cuadros.
+      await esperar(33);
+    } catch (error) {
+      estado.textContent = 'Se perdió la conexión. Reintentando...';
+      estado.className = 'error';
+      await esperar(1000);
+    } finally {
+      controlador.abort();
+    }
+  }
+}
+
+async function iniciar() {
+  // Un único supervisor: nunca iniciar bucles paralelos al volver a Safari.
+  while (true) {
+    if (document.hidden) {
+      await esperar(500);
+      continue;
+    }
+    let vigente = true;
+    try {
+      mantenerPantalla();
+      estado.textContent = 'Conectando cámara...';
+      const apertura = navigator.mediaDevices.getUserMedia({ video: restricciones(), audio: false });
+      apertura.then(stream => {
+        if (!vigente || document.hidden) stream.getTracks().forEach(track => track.stop());
+      }, () => {});
+      const stream = await conLimite(apertura, 30000, 'La cámara no responde');
+      if (document.hidden) continue;
+      pista = stream.getVideoTracks()[0];
+      video.srcObject = stream;
+      await conLimite(video.play(), 8000, 'El vídeo no inicia');
+      await aplicarResolucion();
+      await enviar();
+    } catch (error) {
+      estado.textContent = 'Recuperando cámara: ' + error.message;
+      estado.className = 'error';
+    } finally {
+      vigente = false;
+      detenerCamara();
+    }
+    await esperar(1000);
+  }
+}
+iniciar();
 </script>
 </body>
 </html>
@@ -131,15 +278,21 @@ if ('wakeLock' in navigator) {
 def generar_mjpeg():
     """Entrega los cuadros en formato MJPEG, que es lo que lee OpenCV."""
     ultimo_enviado = 0.0
+    inicio = time.monotonic()
     while True:
         with _lock:
             jpeg = _ultimo["jpeg"]
             hora = _ultimo["hora"]
 
-        if jpeg and hora != ultimo_enviado:
+        ahora = time.monotonic()
+        if ahora - max(inicio, hora) > 8:
+            # Cierra la lectura bloqueada y permite que OpenCV reconecte.
+            return
+        if jpeg and ahora - hora < 8 and hora != ultimo_enviado:
             ultimo_enviado = hora
             yield (b"--frame\r\n"
-                   b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
+                   b"Content-Type: image/jpeg\r\nContent-Length: "
+                   + str(len(jpeg)).encode("ascii") + b"\r\n\r\n" + jpeg + b"\r\n")
         else:
             time.sleep(0.01)
 
@@ -160,7 +313,7 @@ def subir():
     if datos:
         with _lock:
             _ultimo["jpeg"] = datos
-            _ultimo["hora"] = time.time()
+            _ultimo["hora"] = time.monotonic()
     return "", 204
 
 
@@ -171,7 +324,8 @@ app_stream = Flask("stream")
 @app_stream.route("/stream")
 def stream():
     return Response(generar_mjpeg(),
-                    mimetype="multipart/x-mixed-replace; boundary=frame")
+                    mimetype="multipart/x-mixed-replace; boundary=frame",
+                    headers={"Cache-Control": "no-store"})
 
 
 def ip_local():

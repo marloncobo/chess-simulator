@@ -80,8 +80,21 @@ Opciones independientes para dos cámaras locales:
 ```
 
 `--backend`, `--ancho` y `--alto` siguen disponibles como valores comunes.
-Las URLs usan `auto` y conservan la resolución enviada por el teléfono: cambie
-`ANCHO`/`ALTO` en el puente y vuelva a abrir su página para solicitar otra.
+Las URLs usan `auto` y conservan la resolución enviada por el teléfono. El puente
+del iPhone solicita **HD 720p** por defecto y permite elegir **1080p** o **480p**
+desde Safari, sin reiniciar la prueba. Envía las dimensiones reales que entrega
+la cámara y adapta el lienzo al girar el teléfono, sin estirar ni recortar.
+Coloque el iPhone **horizontal** para aprovechar el ancho del panel como una
+webcam; en vertical se conservan bandas laterales para mostrar todo el tablero.
+Después de cambiar resolución u orientación, vuelva a calibrar esa cámara.
+Si la red se vuelve lenta en 1080p, seleccione 720p o 480p. La resolución exacta
+depende de lo que permita Safari y se muestra en el teléfono y en el PC.
+El puente recupera automáticamente la cámara si el vídeo deja de avanzar o
+la captura JPEG se bloquea, y vuelve a abrirla al regresar a Safari. También
+incluye **Reconectar cámara** en el teléfono. Mantenga Safari visible: iOS puede
+suspender la cámara al bloquear la pantalla o cambiar de aplicación. El puente
+solicita mantener la pantalla encendida, aunque el sistema puede denegarlo.
+Si el PC reconecta y pide calibración, use **L** solo si el teléfono no se movió.
 Si una cámara local no abre, cierre otras aplicaciones que la usen o pruebe
 `--backend-1 dshow` / `--backend-2 dshow` (Windows).
 
