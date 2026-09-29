@@ -44,11 +44,11 @@ INSIGNIA = {RESCATE_1: "1", RESCATE_2: "2", SOLO_1: "1!", SOLO_2: "2!",
             CONFLICTO: "X", CIEGAS: "?"}
 
 ETIQUETA = {
-    AMBAS: "confirmadas por las dos",
+    AMBAS: "coincidencias entre las dos",
     RESCATE_1: "solo las ve la camara 1",
     RESCATE_2: "solo las ve la camara 2",
     CONFLICTO: "las camaras discrepan",
-    CIEGAS: "tapadas, sin informacion",
+    CIEGAS: "inciertas: ver motivo abajo",
 }
 
 
@@ -103,10 +103,10 @@ def dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimie
     y += 6
     if casillas:
         if r1 + r2 == 0:
-            aviso = "Las dos camaras ven lo mismo: la segunda no aporta nada"
+            aviso = "Sin detecciones exclusivas; ambas pueden corroborar la posicion"
             color = (80, 220, 255)
         else:
-            aviso = f"Sin la segunda camara faltarian {r2} pieza(s); sin la primera, {r1}"
+            aviso = f"Detecciones exclusivas: camara 1 = {r1}, camara 2 = {r2} (por validar)"
             color = COLOR[AMBAS]
         _txt(lienzo, aviso, (x0, y), .44, color)
     y += 26
@@ -180,10 +180,10 @@ AYUDA = [
     "punto verde    la ven las dos camaras",
     "borde azul 1   solo la ve la camara 1 (la 2 la tiene tapada)",
     "borde naranja 2  solo la ve la camara 2",
-    "borde ambar 1! 2!  una la ve y la otra dice que esta vacia",
-    "               son los falsos positivos mas probables",
+    "borde ambar 1! 2!  deteccion unilateral: requiere mas confirmacion",
+    "letra H        pieza conservada del historial, no observada ahora",
     "borde rojo X   las camaras discrepan en la pieza",
-    "rayado gris ?  tapada en las dos; conserva el estado anterior",
+    "rayado gris ?  incertidumbre: color, movimiento, fondo u oclusion",
     "",
     "T torre  C caballo  A alfil  D dama  R rey  P peon",
 ]

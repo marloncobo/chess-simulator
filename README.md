@@ -133,18 +133,41 @@ con `--confianza 0.6` (mínimo 0.5). El detector clasifica tipo por YOLO y color
 mediante los umbrales HSV existentes; exposición e iluminación distintas pueden
 producir colores dudosos.
 
-La combinación acepta una pieza visible en una cámara aunque la otra no la
-detecte, agrupa coincidencias y deja sin confirmar los conflictos de tipo/color.
-Para retirar una pieza confirmada requiere ausencia fiable en ambas vistas y al
-menos 2 segundos de estabilidad. Las siluetas que se proyectan sobre casillas vecinas
-marcan esas ausencias como dudosas. Es una aproximación: una mano inmóvil o una
-pieza omitida por ambas cámaras todavía puede causar errores; no hay garantía
-de eliminar todos los puntos ciegos.
+La combinación distingue dudas de color, oclusión estimada por silueta,
+movimiento local, fondo no verificable y apoyo próximo a un borde. El panel
+indica la causa; una duda de color ya no cuenta como rescate por oclusión.
+La letra **H** identifica una pieza conservada del historial sin observación
+actual coincidente. Los contadores del panel describen propuestas, no precisión.
+
+Cada casilla se evalúa por separado: el movimiento en una vista no bloquea las
+zonas estables de la otra. Las casillas afectadas por movimiento esperan 0.8 s
+sin cambios. La apariencia de las casillas vacías se comprueba contra referencias
+de color del tablero aprendidas en cada cámara; si no se puede verificar el fondo,
+la ausencia queda dudosa incluso cuando el objeto que la tapa está inmóvil.
+Para aprender las referencias, deje visibles varias casillas vacías de ambos
+colores al calibrar. Los tableros muy texturados o los cambios de iluminación
+pueden producir más dudas; recalibre para reiniciar las referencias.
+
+Una coincidencia de ambas vistas conserva la confirmación normal (al menos
+3 muestras y 0.6 s). Una pieza vista solo por una cámara exige confianza mínima
+0.70, al menos 5 muestras y 1.5 s; las detecciones más débiles quedan pendientes.
+Los conflictos de tipo/color conservan la última posición sin elegir un ganador.
+Para retirar una pieza confirmada se requieren ausencias verificables en ambas
+vistas y al menos 2 segundos de estabilidad.
+
+Los apoyos a menos de 0.12 casillas de un borde se consideran ambiguos junto
+con las casillas vecinas. Si dos vistas asignan la misma clase a casillas
+diferentes con apoyos a menos de 0.55 casillas, no se confirman como dos piezas.
+Estas comprobaciones reducen decisiones arbitrarias; no corrigen automáticamente
+una cámara movida. La calibración sigue siendo manual y debe repetirse si cambia
+su posición. Tampoco hay garantía de detectar todas las manos u oclusiones: un
+objeto parecido al fondo o errores coincidentes de las dos cámaras pueden fallar.
 
 Solo se procesan pares nuevos con lecturas separadas por no más de
 `--max-desfase-ms` (250 ms por defecto) y resultados de menos de 2 segundos.
-Si una cámara falla, las vistas se desfasaron o la escena se mueve, se conserva
-la posición. El umbral se refiere a la lectura en el PC, no a sincronización
+Si una cámara falla o las vistas se desfasan, se conserva la posición. El
+movimiento solo invalida las casillas afectadas por vista. El umbral se refiere
+a la lectura en el PC, no a sincronización
 real de los sensores. La base estimada de una pieza tapada también puede caer
 en una casilla incorrecta: revise la cuadrícula sobre ambas imágenes.
 

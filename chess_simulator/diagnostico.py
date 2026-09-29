@@ -9,18 +9,17 @@ observaciones en la sesión.
 
 ESTADOS
 -------
-    AMBAS       las dos cámaras ven la misma pieza. Máxima fiabilidad.
+    AMBAS       las dos cámaras proponen la misma pieza; no mide exactitud real.
     RESCATE_1   solo la cámara 1 la ve; la 2 la tiene tapada.
     RESCATE_2   solo la cámara 2 la ve; la 1 la tiene tapada.
                 Estos dos son la razón de ser del montaje: miden
                 cuánto aporta realmente la segunda cámara.
-    SOLO_1      la cámara 1 ve pieza y la 2 dice VACÍA con fiabilidad.
+    SOLO_1      la cámara 1 ve pieza y la 2 no aporta evidencia positiva.
     SOLO_2      lo mismo al revés.
-                fusionar() acepta estos casos ("una evidencia positiva
-                basta"), pero una cámara afirmó que no hay nada. Son
-                los candidatos número uno a falso positivo.
+                Requieren mayor confianza y confirmación temporal. El detalle
+                distingue ausencia de incertidumbre de color, fondo o movimiento.
     CONFLICTO   las dos ven pieza pero discrepan en tipo o color.
-    CIEGAS      las dos la tienen tapada. Sin información.
+    CIEGAS      información insuficiente; ver motivo por cámara.
     VACIA       las dos coinciden en que está vacía.
 """
 from collections import Counter
@@ -51,7 +50,7 @@ def diagnosticar(observaciones, fusion=None):
     """
     Devuelve {(fila, col): {"estado":, "pieza":, "v1":, "v2":, "detalle":}}
 
-    'pieza' es lo que quedó confirmado tras fusionar (vacío si nada).
+    'pieza' es la propuesta fusionada, aún pendiente de confirmación temporal.
     'v1' y 'v2' son lo que vio cada cámara, para poder compararlas.
     """
     if len(observaciones) != 2:
@@ -61,35 +60,39 @@ def diagnosticar(observaciones, fusion=None):
 
     for f in range(8):
         for c in range(8):
-            tapada1 = (f, c) in o1.desconocidas
-            tapada2 = (f, c) in o2.desconocidas
-            p1 = "" if tapada1 else o1.tablero[f][c]
-            p2 = "" if tapada2 else o2.tablero[f][c]
+            dudosa1 = (f, c) in o1.desconocidas
+            dudosa2 = (f, c) in o2.desconocidas
+            motivo1 = getattr(o1, "motivos", {}).get((f, c), "Duda sin clasificar" if dudosa1 else "")
+            motivo2 = getattr(o2, "motivos", {}).get((f, c), "Duda sin clasificar" if dudosa2 else "")
+            tapada1 = motivo1 == "Oclusion por silueta"
+            tapada2 = motivo2 == "Oclusion por silueta"
+            p1 = "" if dudosa1 else o1.tablero[f][c]
+            p2 = "" if dudosa2 else o2.tablero[f][c]
 
             if p1 and p2:
                 estado = AMBAS if p1 == p2 else CONFLICTO
                 detalle = "" if p1 == p2 else f"vista 1 dice {p1}, vista 2 dice {p2}"
             elif p1:
                 estado = RESCATE_1 if tapada2 else SOLO_1
-                detalle = ("la vista 2 la tiene tapada" if tapada2
-                           else "la vista 2 dice que esta vacia")
+                detalle = (f"vista 2: {motivo2}" if dudosa2
+                           else "vista 2: ausencia; confirmar deteccion unilateral")
             elif p2:
                 estado = RESCATE_2 if tapada1 else SOLO_2
-                detalle = ("la vista 1 la tiene tapada" if tapada1
-                           else "la vista 1 dice que esta vacia")
-            elif tapada1 and tapada2:
-                estado, detalle = CIEGAS, "tapada en las dos vistas"
-            elif tapada1 or tapada2:
-                # Una la tapa, la otra la ve vacía: sin evidencia positiva
+                detalle = (f"vista 1: {motivo1}" if dudosa1
+                           else "vista 1: ausencia; confirmar deteccion unilateral")
+            elif dudosa1 or dudosa2:
                 estado = CIEGAS
-                detalle = f"tapada en la vista {1 if tapada1 else 2}"
+                detalle = " / ".join(f"v{i}: {m}" for i, m in ((1, motivo1), (2, motivo2)) if m)
             else:
                 estado, detalle = VACIA, ""
 
             confirmada = fusion.tablero[f][c] if fusion else ""
+            if fusion and (f, c) in fusion.desconocidas and (p1 or p2) and estado != CONFLICTO:
+                detalle += "; pendiente por confianza o posicion"
             casillas[(f, c)] = {"estado": estado, "pieza": confirmada,
                                 "v1": o1.tablero[f][c], "v2": o2.tablero[f][c],
                                 "tapada1": tapada1, "tapada2": tapada2,
+                                "motivo1": motivo1, "motivo2": motivo2,
                                 "detalle": detalle}
     return casillas
 
@@ -134,11 +137,9 @@ def problemas(casillas, limite=8):
 
 def aporte_segunda_camara(casillas):
     """
-    Cuántas piezas existen en el tablero gracias a cada cámara.
-
-    Es la medida directa de si el montaje de dos cámaras sirve: si
-    ambos números son cero, las dos ven lo mismo y la segunda no
-    está aportando nada.
+    Propuestas exclusivas con oclusión estimada en la otra vista y coincidencias.
+    Son contadores de evidencia, no una medición de precisión ni de piezas
+    reales recuperadas: eso requiere compararlas con un tablero etiquetado.
     """
     r = resumen(casillas)
     return r.get(RESCATE_1, 0), r.get(RESCATE_2, 0), r.get(AMBAS, 0)

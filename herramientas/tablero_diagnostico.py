@@ -156,6 +156,13 @@ def dibujar(posicion, casillas, dudosas, casilla_px=47, margen=(34, 14)):
             elif (fila, col) in (dudosas or ()):
                 pygame.draw.rect(sup, (255, 160, 40), rect, 2)
 
+            # No presentar una pieza retenida como si acabara de observarse.
+            if pieza and (not info or info.get("pieza") != pieza):
+                etiqueta = f_marca.render("H", True, (245, 245, 245))
+                fondo = pygame.Rect(x+1, y+casilla_px-15, 13, 14)
+                pygame.draw.rect(sup, (70, 70, 75), fondo)
+                sup.blit(etiqueta, (fondo.x+2, fondo.y))
+
     for n in range(8):
         num = f_coord.render(str(8 - n), True, TENUE)
         sup.blit(num, (mx - 16, my + n * casilla_px + casilla_px // 2 - 7))

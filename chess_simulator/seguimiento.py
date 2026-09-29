@@ -236,7 +236,7 @@ class SeguimientoPorCasilla(Seguimiento):
             self.desde_cambio = None
             self.ultimo_movimiento = None
 
-    def recibir(self, observacion, ahora):
+    def recibir(self, observacion, ahora, procedencias=None):
         self.comprobar_conexion(ahora)
         if observacion.secuencia <= self.ultima_secuencia:
             return None
@@ -278,7 +278,11 @@ class SeguimientoPorCasilla(Seguimiento):
                     if any(antes[fo][co] == pieza and not observacion.tablero[fo][co]
                            and (fo, co) not in self.dudosas for fo in range(8) for co in range(8)):
                         espera = self.espera_vacio
-                if candidato[2] >= self.minimo_muestras and ahora-candidato[1] >= espera:
+                minimo = self.minimo_muestras
+                if pieza and procedencias is not None and procedencias.get(nombre(f, c)) != "1+2":
+                    espera = max(espera, 1.5)
+                    minimo = max(minimo, 5)
+                if candidato[2] >= minimo and ahora-candidato[1] >= espera:
                     nueva[f][c] = pieza
                     self.confianzas_confirmadas[clave] = (observacion.confianzas[f][c]
                                                          if observacion.confianzas else observacion.confianza)

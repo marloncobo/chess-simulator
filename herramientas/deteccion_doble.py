@@ -10,10 +10,10 @@ import numpy as np
 from herramientas.probar_dos_camaras import CamaraSupervisada, panel, texto, vigente
 from chess_simulator.captura_vivo import ultimo, leer_ultimo
 from chess_simulator.detector_doble import inferir_par
-from chess_simulator.fusion_camaras import observar_vista, fusionar, par_valido
+from chess_simulator.fusion_camaras import observar_vista, fusionar, par_valido, FiltroCasillas
 from chess_simulator.rutas import CONFIG
 from chess_simulator.seguimiento import SeguimientoPorCasilla
-from chess_simulator.vision_vivo import FiltroEscena, homografia
+from chess_simulator.vision_vivo import homografia
 from chess_simulator.diagnostico import diagnosticar
 from herramientas.panel_diagnostico import panel_inferior, panel_ayuda
 
@@ -59,7 +59,7 @@ class SesionDoble:
         self.esquinas = [[], []]
         self.resoluciones = [None, None]
         self.generaciones = [c.reinicios for c in camaras]
-        self.filtros = [FiltroEscena(), FiltroEscena()]
+        self.filtros = [FiltroCasillas(), FiltroCasillas()]
         self.seguimiento = SeguimientoPorCasilla(espera_vacio=2.)
         self.revision = self.secuencia = 0
         self.seleccion = None
@@ -78,7 +78,7 @@ class SesionDoble:
         self.ultimas = [None, None]
         self.procedencias = {}
         self.casillas = {}
-        self.filtros = [FiltroEscena(), FiltroEscena()]
+        self.filtros = [FiltroCasillas(), FiltroCasillas()]
         self.seguimiento.invalidar("Esperando nuevas vistas estables")
 
     def comprobar_camaras(self):
@@ -148,23 +148,21 @@ class SesionDoble:
         actuales = [c.estado for c in self.camaras]
         if not par_valido(vistas, ahora, self.args.max_desfase_ms/1000) or not all(vigente(p, ahora) for p in actuales):
             self.procedencias = {}
+            self.casillas = {}
             self.seguimiento.invalidar("Resultados antiguos; posicion conservada")
             self.mensaje = "Resultado antiguo descartado; espere imagenes recientes"
             return False
         self.ultimas = vistas
         self.inferencia = resultado["inferencia"]
-        quietas = [f.estable(v["frame"], e) for f, v, e in zip(self.filtros, vistas, self.esquinas)]
-        if not all(quietas):
-            self.procedencias = {}
-            self.seguimiento.invalidar("Movimiento; esperando estabilidad", conservar_movimiento=True, ahora=ahora)
-            self.mensaje = "Movimiento o cambio visual: esperando estabilidad en ambas vistas"
-            return False
         self.secuencia += 1
-        observaciones = [observar_vista(v["detecciones"], e, self.secuencia)
-                         for v, e in zip(vistas, self.esquinas)]
+        observaciones = []
+        for filtro, vista, esquinas in zip(self.filtros, vistas, self.esquinas):
+            movimiento = filtro.evaluar(vista["frame"], esquinas, ahora)
+            observacion = observar_vista(vista["detecciones"], esquinas, self.secuencia, movimiento)
+            observaciones.append(filtro.verificar_vacios(observacion))
         self.observacion, self.procedencias = fusionar(observaciones, self.secuencia)
         self.casillas = diagnosticar(observaciones, self.observacion)
-        movimiento = self.seguimiento.recibir(self.observacion, ahora)
+        movimiento = self.seguimiento.recibir(self.observacion, ahora, self.procedencias)
         if movimiento:
             self.movimiento = movimiento.texto()
             print(self.movimiento, flush=True)
@@ -172,6 +170,8 @@ class SesionDoble:
         return True
 
     def dibujar(self, ahora):
+        if not all(v is not None and vigente(v, ahora) for v in self.ultimas):
+            self.casillas = {}
         paneles = []
         for i, camara in enumerate(self.camaras):
             estado = camara.estado
@@ -260,6 +260,7 @@ def ejecutar(args):
             if fallo:
                 sesion.mensaje = fallo
                 sesion.procedencias = {}
+                sesion.casillas = {}
                 sesion.seguimiento.invalidar(fallo)
             elif not listo and sesion.seleccion is None:
                 sesion.mensaje = "Cargando modelo; puede calibrar con 1 y 2"
@@ -267,6 +268,7 @@ def ejecutar(args):
                 sesion.mensaje = "Faltan dos imagenes recientes o el desfase supera el umbral"
                 sesion.seguimiento.invalidar(sesion.mensaje)
                 sesion.procedencias = {}
+                sesion.casillas = {}
             sesion.seguimiento.comprobar_conexion(ahora)
             cv2.imshow(VENTANA, sesion.dibujar(time.monotonic()))
             tecla = cv2.waitKey(15) & 0xFF
