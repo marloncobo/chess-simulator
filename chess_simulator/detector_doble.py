@@ -3,9 +3,12 @@ from queue import Empty
 import time
 
 from chess_simulator.captura_vivo import ultimo, leer_ultimo
+from chess_simulator.reglas_deteccion import CONFIANZA_DETECTOR
 
 
-def inferir_par(modelo, entrada, salida, parar, confianza=.5):
+def inferir_par(modelo, entrada, salida, parar, confianza=CONFIANZA_DETECTOR):
+    """confianza es el filtro de YOLO; debe quedar por debajo de UMBRAL_DUDA
+    para que las detecciones débiles lleguen a la fusión como duda."""
     salida.cancel_join_thread()
     try:
         from ultralytics import YOLO

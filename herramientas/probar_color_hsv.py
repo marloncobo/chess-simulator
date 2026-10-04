@@ -11,7 +11,7 @@ from chess_simulator.captura_vivo import FlujoVivo, leer_ultimo, ultimo
 
 
 VENTANA = "Prueba HSV - piezas claras y negras"
-CONTROLES = {"V negra max": 85, "V blanca min": 150, "S blanca max": 110,
+CONTROLES = {"V negra max": 85, "V blanca min": 125, "S blanca max": 110,
              "Erosion px": 3}
 COLORES = {"BLANCA": (80, 230, 80), "NEGRA": (255, 170, 50),
            "DUDOSA": (0, 180, 255)}
@@ -93,7 +93,7 @@ def main():
         resultado = YOLO(str(args.modelo))(frame, verbose=False, max_det=64)[0]
         foto = {"frame": frame, "detecciones": extraer(resultado, frame)}
         comparacion, medidas = dibujar(frame, foto["detecciones"],
-                                       dict(negra_max=85, blanca_min=150,
+                                       dict(negra_max=85, blanca_min=125,
                                             saturacion_max=110, erosion=3), modo="comparacion")
         for medida in medidas:
             print(medida)

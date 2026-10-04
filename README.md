@@ -128,8 +128,10 @@ blancos o negros. La indicación **1**, **2** o **1+2** muestra qué cámara apo
 la detección. Un borde naranja indica duda y conserva el estado previo.
 
 Se usa una sola instancia de `modelos/bestnano.pt` para las dos imágenes.
-Puede elegir otro modelo de **segmentación** con `--modelo` y aumentar el umbral
-con `--confianza 0.6` (mínimo 0.5). El detector clasifica tipo por YOLO y color
+Puede elegir otro modelo de **segmentación** con `--modelo`. `--confianza` es el
+filtro de YOLO (por defecto 0.25, rango 0.05 a 1): las detecciones entre ese valor
+y 0.5 no afirman pieza, pero dejan su casilla en duda en esa vista en lugar de
+darla por vacía, para que la otra cámara pueda confirmarla. El detector clasifica tipo por YOLO y color
 mediante los umbrales HSV existentes; exposición e iluminación distintas pueden
 producir colores dudosos.
 
@@ -138,6 +140,21 @@ movimiento local, fondo no verificable y apoyo próximo a un borde. El panel
 indica la causa; una duda de color ya no cuenta como rescate por oclusión.
 La letra **H** identifica una pieza conservada del historial sin observación
 actual coincidente. Los contadores del panel describen propuestas, no precisión.
+
+### Medir aciertos con fotos reales
+
+`herramientas/evaluar_pares.py` corre el modelo y la fusión sobre pares de fotos
+anotados a mano y cuenta, casilla por casilla, aciertos, dudas, falsas vacías y
+errores afirmados para cada vista y para la fusión:
+
+```powershell
+.\.venv\Scripts\python.exe -m herramientas.evaluar_pares datos/verificacion/pares.json
+.\.venv\Scripts\python.exe -m herramientas.evaluar_pares datos/verificacion/pares.json --confianza 0.5 --csv resultados/eval.csv
+```
+
+El formato está descrito en el propio script; `datos/verificacion/pares.json`
+trae un par de ejemplo (foto1/foto2). Agregue pares tomados desde las posiciones
+reales de las cámaras antes de ajustar umbrales.
 
 Cada casilla se evalúa por separado: el movimiento en una vista no bloquea las
 zonas estables de la otra. Las casillas afectadas por movimiento esperan 0.8 s
@@ -154,6 +171,15 @@ Una coincidencia de ambas vistas conserva la confirmación normal (al menos
 Los conflictos de tipo/color conservan la última posición sin elegir un ganador.
 Para retirar una pieza confirmada se requieren ausencias verificables en ambas
 vistas y al menos 2 segundos de estabilidad.
+
+Si una cámara se reconecta con la misma resolución, su calibración se conserva:
+un corte del stream no implica que se haya movido. Solo se borra si la resolución
+cambia; si la cámara se movió de verdad, recalibre con 1 o 2.
+
+Los topes por clase de `chess_simulator/reglas_deteccion.py` (2 reyes, 2 damas,
+4 torres, 4 alfiles, 4 caballos, 16 peones, y como máximo 1 rey por color) se
+aplican por vista y sobre el estado acumulado; las detecciones sobrantes de menor
+confianza quedan en duda con su motivo.
 
 Los apoyos a menos de 0.12 casillas de un borde se consideran ambiguos junto
 con las casillas vecinas. Si dos vistas asignan la misma clase a casillas

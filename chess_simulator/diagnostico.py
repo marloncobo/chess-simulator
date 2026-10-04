@@ -24,11 +24,12 @@ ESTADOS
 """
 from collections import Counter
 
+from chess_simulator.reglas_deteccion import LIMITES
 from chess_simulator.seguimiento import nombre
 
 # Piezas de un juego estándar. Las promociones alteran el reparto pero
 # nunca el total, así que un exceso por clase señala un error probable.
-ESPERADAS = {"R": 2, "D": 2, "T": 4, "A": 4, "C": 4, "P": 16}
+ESPERADAS = LIMITES
 
 NOMBRE_CLASE = {"R": "rey", "D": "dama", "T": "torre",
                 "A": "alfil", "C": "caballo", "P": "peon"}
@@ -64,8 +65,10 @@ def diagnosticar(observaciones, fusion=None):
             dudosa2 = (f, c) in o2.desconocidas
             motivo1 = getattr(o1, "motivos", {}).get((f, c), "Duda sin clasificar" if dudosa1 else "")
             motivo2 = getattr(o2, "motivos", {}).get((f, c), "Duda sin clasificar" if dudosa2 else "")
-            tapada1 = motivo1 == "Oclusion por silueta"
-            tapada2 = motivo2 == "Oclusion por silueta"
+            # Los motivos se acumulan ("Baja confianza + Oclusion por silueta"):
+            # basta con que la oclusión sea uno de ellos.
+            tapada1 = "Oclusion por silueta" in motivo1.split(" + ")
+            tapada2 = "Oclusion por silueta" in motivo2.split(" + ")
             p1 = "" if dudosa1 else o1.tablero[f][c]
             p2 = "" if dudosa2 else o2.tablero[f][c]
 
@@ -88,7 +91,8 @@ def diagnosticar(observaciones, fusion=None):
 
             confirmada = fusion.tablero[f][c] if fusion else ""
             if fusion and (f, c) in fusion.desconocidas and (p1 or p2) and estado != CONFLICTO:
-                detalle += "; pendiente por confianza o posicion"
+                motivo = getattr(fusion, "motivos", {}).get((f, c), "confianza o posicion")
+                detalle += f"; pendiente: {motivo}"
             casillas[(f, c)] = {"estado": estado, "pieza": confirmada,
                                 "v1": o1.tablero[f][c], "v2": o2.tablero[f][c],
                                 "tapada1": tapada1, "tapada2": tapada2,

@@ -125,9 +125,31 @@ class PruebasSesion(unittest.TestCase):
             with self.assertRaises(OSError):
                 cargar("http://localhost/b", (800, 800))
 
-    def test_reinicio_invalida_solo_calibracion_afectada(self):
+    def test_reinicio_con_misma_resolucion_conserva_calibracion(self):
+        # Un stream que se cae y vuelve igual no movio la camara (problema 5).
+        sesion = self.sesion()
+        revision = sesion.revision
+        sesion.camaras[0].reinicios += 1
+        sesion.camaras[0].estado = {"error": "Sin cuadros. Reiniciando conexion..."}
+        sesion.comprobar_camaras()
+        self.assertGreater(sesion.revision, revision)  # se descartan resultados en curso
+        self.assertEqual(len(sesion.esquinas[0]), 4)
+        sesion.camaras[0].estado = {"frame": np.zeros((800, 800, 3), np.uint8), "instante": time.monotonic()}
+        sesion.comprobar_camaras()
+        self.assertEqual(len(sesion.esquinas[0]), 4)
+        self.assertEqual(len(sesion.esquinas[1]), 4)
+
+    def test_muchos_reinicios_no_impiden_tener_ambas_calibradas(self):
+        sesion = self.sesion()
+        for _ in range(28):
+            sesion.camaras[1].reinicios += 1
+            sesion.comprobar_camaras()
+        self.assertTrue(all(len(e) == 4 for e in sesion.esquinas))
+
+    def test_cambio_de_resolucion_invalida_solo_calibracion_afectada(self):
         sesion = self.sesion()
         sesion.camaras[0].reinicios += 1
+        sesion.camaras[0].estado = {"frame": np.zeros((480, 640, 3), np.uint8), "instante": time.monotonic()}
         revision = sesion.revision
         sesion.comprobar_camaras()
         self.assertGreater(sesion.revision, revision)

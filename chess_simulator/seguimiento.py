@@ -1,7 +1,7 @@
 """Estado y confirmación temporal; independiente de cámara, YOLO y Pygame."""
 from dataclasses import dataclass
 import math
-from chess_simulator.reglas_deteccion import MAX_TORRES
+from chess_simulator.reglas_deteccion import excedentes, tipo
 
 PIEZAS = frozenset("tcardpTCARDP") | frozenset("?" + p for p in "TCARDP")
 
@@ -218,6 +218,7 @@ class SeguimientoPorCasilla(Seguimiento):
         self.desde_cambio = None
         self.confianzas_confirmadas = {}
         self.torres_descartadas = 0
+        self.descartadas = {}
         super().__init__(estabilidad, minimo_muestras, timeout, confianza_minima=.5,
                          reflejar_observaciones=True)
 
@@ -247,10 +248,16 @@ class SeguimientoPorCasilla(Seguimiento):
             self.ancla, self.desde_cambio = self.posicion, None
             self.ultimo_movimiento = None
         # Incompleta sin localización de la duda: oclusión general/entrada externa.
-        if (not observacion.completa and not observacion.desconocidas) or observacion.confianza < self.confianza_minima:
+        if not observacion.completa and not observacion.desconocidas:
             self.invalidar("Observación incompleta o poco fiable", conservar_movimiento=True)
             return None
-        self.dudosas = observacion.desconocidas
+        # La confianza se evalúa por casilla: una pieza débil queda en duda sin
+        # bloquear la actualización del resto del tablero.
+        debiles = frozenset((f, c) for f in range(8) for c in range(8)
+                            if observacion.tablero[f][c]
+                            and (observacion.confianzas[f][c] if observacion.confianzas
+                                 else observacion.confianza) < self.confianza_minima)
+        self.dudosas = observacion.desconocidas | debiles
         antes = self.posicion
         nueva = [list(f) for f in antes] if antes is not None else [[""]*8 for _ in range(8)]
         hubo_confirmacion = False
@@ -289,14 +296,18 @@ class SeguimientoPorCasilla(Seguimiento):
                     hubo_confirmacion = True
                     self.pendientes.pop(clave)
         # El filtro por fotograma no basta: piezas retenidas de observaciones
-        # anteriores pueden sumarse a nuevas torres y superar la restricción.
-        torres = [(f, c) for f in range(8) for c in range(8) if nueva[f][c] in ("?T", "T", "t")]
-        torres.sort(key=lambda celda: (
-            celda in self.dudosas or observacion.tablero[celda[0]][celda[1]] not in ("?T", "T", "t"),
-            -self.confianzas_confirmadas.get(celda, 0.),
-            not (antes is not None and antes[celda[0]][celda[1]] in ("?T", "T", "t")), celda))
-        sobrantes = torres[MAX_TORRES:]
-        self.torres_descartadas = len(sobrantes)
+        # anteriores pueden sumarse a nuevas detecciones y superar los topes.
+        def prioridad(celda):
+            f, c = celda
+            pieza = nueva[f][c]
+            return (celda in self.dudosas or tipo(observacion.tablero[f][c]) != tipo(pieza),
+                    -self.confianzas_confirmadas.get(celda, 0.),
+                    not (antes is not None and tipo(antes[f][c]) == tipo(pieza)), celda)
+        exceso = excedentes((((f, c), nueva[f][c]) for f in range(8) for c in range(8)
+                             if nueva[f][c]), prioridad)
+        sobrantes = sorted(exceso)
+        self.descartadas = {nombre(f, c): motivo for (f, c), motivo in exceso.items()}
+        self.torres_descartadas = sum(tipo(nueva[f][c]) == "T" for f, c in sobrantes)
         for f, c in sobrantes:
             nueva[f][c] = ""
             self.pendientes.pop((f, c), None)

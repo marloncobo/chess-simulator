@@ -4,13 +4,20 @@ import numpy as np
 from dataclasses import dataclass, field
 
 from chess_simulator.seguimiento import Observacion, nombre
-from chess_simulator.vision_vivo import construir_observacion, homografia
+from chess_simulator.vision_vivo import apoyo_tablero, construir_observacion, homografia, separar_razon
 
 
 @dataclass(frozen=True)
 class Vista(Observacion):
     motivos: dict = field(default_factory=dict)
     apoyos: dict = field(default_factory=dict)
+
+
+def anotar(motivos, celda, motivo):
+    """Añade un motivo a la casilla sin borrar los anteriores."""
+    previos = motivos.get(celda, "")
+    if motivo not in previos.split(" + "):
+        motivos[celda] = f"{previos} + {motivo}" if previos else motivo
 
 
 def con_dudas(obs, motivos, apoyos=None):
@@ -72,7 +79,7 @@ class FiltroCasillas:
         for (f, c), (color, dispersion) in medidas.items():
             fondo = self.fondo.get((f+c)%2)
             if fondo is None or dispersion >= 25 or np.linalg.norm(color-fondo) >= 35:
-                motivos[f, c] = "Fondo no verificable"
+                anotar(motivos, (f, c), "Fondo no verificable")
         return con_dudas(vista, motivos, vista.apoyos)
 
 
@@ -82,16 +89,19 @@ def observar_vista(detecciones, esquinas, secuencia, movimiento=()):
     Es una aproximación de oclusión sobre el plano, no un detector de manos.
     """
     obs, _, _, razones = construir_observacion(detecciones, esquinas, secuencia)
-    motivos = {p: "Deteccion dudosa" for p in obs.desconocidas}
+    motivos = {}
     for razon in razones:
-        causa, _, casilla = razon.rpartition(" en ")
+        causas, casilla = separar_razon(razon)
         for p in obs.desconocidas:
             if nombre(*p) == casilla:
-                motivos[p] = causa
+                for causa in causas:
+                    anotar(motivos, p, causa)
+    for p in obs.desconocidas:
+        motivos.setdefault(p, "Deteccion dudosa")
     apoyos = {}
     h = homografia(esquinas)
     for d in detecciones:
-        x, y = cv2.perspectiveTransform(np.float32(d["punto"]).reshape(1, 1, 2), h)[0, 0]
+        x, y = apoyo_tablero(d, h)
         if not (0 <= x < 8 and 0 <= y < 8):
             continue
         f, c = int(y), int(x)
@@ -105,7 +115,7 @@ def observar_vista(detecciones, esquinas, secuencia, movimiento=()):
             for fila in filas:
                 for col in cols:
                     if 0 <= fila < 8 and 0 <= col < 8:
-                        motivos[fila, col] = "Apoyo cerca del borde"
+                        anotar(motivos, (fila, col), "Apoyo cerca del borde")
     mascara = np.zeros((160, 160), np.uint8)
     matriz = np.diag([20., 20., 1.]) @ homografia(esquinas)
     for d in detecciones:
@@ -116,22 +126,29 @@ def observar_vista(detecciones, esquinas, secuencia, movimiento=()):
     for f in range(8):
         for c in range(8):
             region = mascara[f*20:(f+1)*20, c*20:(c+1)*20]
-            if not obs.tablero[f][c] and np.count_nonzero(region) / 400 >= .2:
-                motivos.setdefault((f, c), "Oclusion por silueta")
+            # La silueta de una pieza apoyada en esta misma casilla no la tapa:
+            # su duda (color, confianza) ya está anotada y no es oclusión.
+            if (not obs.tablero[f][c] and (f, c) not in apoyos
+                    and np.count_nonzero(region) / 400 >= .2):
+                anotar(motivos, (f, c), "Oclusion por silueta")
     for celda in movimiento:
-        motivos[celda] = "Movimiento local"
+        anotar(motivos, celda, "Movimiento local")
     return con_dudas(obs, motivos, apoyos)
 
 
-def fusionar(vistas, secuencia):
+def fusionar(vistas, secuencia, confianza_unilateral=.7):
     """Una evidencia positiva basta; los conflictos quedan sin confirmar.
 
     Vacío requiere ausencia fiable en AMBAS vistas. No se suman probabilidades
-    del mismo modelo como si fueran mediciones independientes.
+    del mismo modelo como si fueran mediciones independientes: se toma el max.
+
+    Devuelve una Vista: además del tablero lleva en `motivos` por qué quedó
+    en duda cada casilla, y en `confianza` la menor de las piezas propuestas
+    (no un 1 fijo), para que el seguimiento temporal pueda usarla.
     """
     if len(vistas) != 2:
         raise ValueError("Se requieren exactamente dos vistas")
-    piezas, dudas, confianzas, procedencias = [], [], {}, {}
+    piezas, dudas, confianzas, procedencias, motivos = [], [], {}, {}, {}
     for f in range(8):
         for c in range(8):
             casilla = nombre(f, c)
@@ -141,9 +158,11 @@ def fusionar(vistas, secuencia):
             tipos = {p for _, p, _ in candidatas}
             if len(tipos) > 1:
                 dudas.append(casilla)
+                motivos[f, c] = "Las vistas discrepan: " + " / ".join(p for _, p, _ in candidatas)
             elif candidatas:
-                if len(candidatas) == 1 and candidatas[0][2] < .7:
+                if len(candidatas) == 1 and candidatas[0][2] < confianza_unilateral:
                     dudas.append(casilla)
+                    motivos[f, c] = f"Solo la vista {candidatas[0][0]+1}, confianza {candidatas[0][2]:.2f}"
                     continue
                 piezas.append({"casilla": casilla, "pieza": candidatas[0][1]})
                 confianzas[casilla] = max(conf for _, _, conf in candidatas)
@@ -151,6 +170,9 @@ def fusionar(vistas, secuencia):
             elif any((f, c) in obs.desconocidas or (not obs.completa and not obs.desconocidas)
                      for obs in vistas):
                 dudas.append(casilla)
+                causas = [f"v{i+1}: {getattr(obs, 'motivos', {}).get((f, c), 'duda')}"
+                          for i, obs in enumerate(vistas) if (f, c) in obs.desconocidas]
+                motivos[f, c] = "Sin ausencia fiable en ambas vistas" + (f" ({'; '.join(causas)})" if causas else "")
     # Apoyos muy próximos de vistas distintas que cayeron en casillas vecinas:
     # no confirmar dos piezas cuando pueden ser la misma mal localizada.
     ambiguas = set()
@@ -170,9 +192,13 @@ def fusionar(vistas, secuencia):
         dudas.append(casilla)
         confianzas.pop(casilla)
         procedencias.pop(casilla)
-    return Observacion.desde_dict({"secuencia": secuencia, "piezas": piezas,
-        "desconocidas": dudas, "completa": not dudas, "confianza": 1.,
-        "confianzas": confianzas}), procedencias
+        motivos[8-int(casilla[1]), ord(casilla[0])-97] = "Apoyos ambiguos: puede ser la misma pieza vista en dos casillas"
+    obs = Observacion.desde_dict({"secuencia": secuencia, "piezas": piezas,
+        "desconocidas": dudas, "completa": not dudas,
+        "confianza": min(confianzas.values(), default=1.),
+        "confianzas": confianzas})
+    return Vista(obs.secuencia, obs.tablero, obs.completa, obs.confianza, obs.desconocidas,
+                 obs.confianzas, motivos, {}), procedencias
 
 
 def par_valido(paquetes, ahora, max_desfase=.25, max_edad=2.):
