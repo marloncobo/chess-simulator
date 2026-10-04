@@ -340,18 +340,33 @@ def ip_local():
         s.close()
 
 
-def main():
+def argumentos(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Puente celular -> PC. Para dos celulares, corre dos copias con puertos distintos.")
+    parser.add_argument("--puerto-celular", type=int, default=PUERTO_IPHONE,
+                        help=f"Puerto https que se abre en el navegador del celular (por defecto {PUERTO_IPHONE})")
+    parser.add_argument("--puerto-stream", type=int, default=PUERTO_STREAM,
+                        help=f"Puerto http que lee OpenCV (por defecto {PUERTO_STREAM})")
+    args = parser.parse_args(argv)
+    puertos = (args.puerto_celular, args.puerto_stream)
+    if len(set(puertos)) != 2 or not all(1024 <= p <= 65535 for p in puertos):
+        parser.error("Use dos puertos distintos entre 1024 y 65535")
+    return args
+
+
+def main(argv=None):
+    args = argumentos(argv)
     ip = ip_local()
 
     print("\n" + "=" * 62)
-    print("  1. En Safari del iPhone abre:")
-    print(f"        https://{ip}:{PUERTO_IPHONE}")
+    print("  1. En el navegador del celular (Safari en iPhone, Chrome en Android) abre:")
+    print(f"        https://{ip}:{args.puerto_celular}")
     print("     Acepta la advertencia del certificado y da permiso")
     print("     a la camara. Debes ver la imagen en el celular.")
     print()
-    print("  2. En otra terminal del PC, una de estas dos:")
-    print(f'        yolo predict model=bestnano.pt source="http://127.0.0.1:{PUERTO_STREAM}/stream" show=True imgsz=320')
-    print(f"        python3 torres_vivo.py http://127.0.0.1:{PUERTO_STREAM}/stream")
+    print("  2. La deteccion lee este celular en:")
+    print(f"        http://127.0.0.1:{args.puerto_stream}/stream")
     print()
     print("     Ojo: https para el celular, http para el modelo.")
     print("=" * 62 + "\n")
@@ -359,13 +374,13 @@ def main():
     # El stream corre en un hilo aparte
     hilo = threading.Thread(
         target=lambda: app_stream.run(
-            host="0.0.0.0", port=PUERTO_STREAM,
+            host="0.0.0.0", port=args.puerto_stream,
             threaded=True, debug=False, use_reloader=False),
         daemon=True,
     )
     hilo.start()
 
-    app_iphone.run(host="0.0.0.0", port=PUERTO_IPHONE,
+    app_iphone.run(host="0.0.0.0", port=args.puerto_celular,
                    ssl_context="adhoc", threaded=True,
                    debug=False, use_reloader=False)
 

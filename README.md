@@ -63,9 +63,17 @@ a la cámara. Luego ejecute la prueba con la dirección **HTTP del vídeo**:
 .\.venv\Scripts\python.exe -m herramientas.probar_dos_camaras --sources 0 http://127.0.0.1:5002/stream
 ```
 
-El puente requiere Flask y pyOpenSSL. Su canal actual admite un solo teléfono;
-dos teléfonos necesitan canales o instancias separados. La prueba admite dos
-URLs distintas, pero no separa teléfonos que envían al mismo canal del puente.
+El puente requiere Flask y pyOpenSSL. Funciona con Safari en iPhone y con Chrome
+en Android. Cada copia del puente atiende un teléfono; para usar dos teléfonos
+como las dos cámaras, inicie dos copias con puertos distintos:
+
+```powershell
+.\.venv\Scripts\python.exe puente_iphone.py
+.\.venv\Scripts\python.exe puente_iphone.py --puerto-celular 5003 --puerto-stream 5004
+.\.venv\Scripts\python.exe -m herramientas.probar_dos_camaras --sources http://127.0.0.1:5002/stream http://127.0.0.1:5004/stream --detectar
+```
+
+Cada teléfono abre la dirección HTTPS de su copia (puerto 5001 y 5003).
 
 La ventana muestra resolución real, FPS de lectura, antigüedad de cada imagen,
 reinicios y desfase entre lecturas en el PC. **Q/Esc** cierra; **R** reconecta ambas
