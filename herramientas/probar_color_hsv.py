@@ -65,9 +65,12 @@ def controles():
                 saturacion_max=valores["S blanca max"], erosion=valores["Erosion px"])
 
 
-def main():
+def main(argv=None):
+    from herramientas.probar_dos_camaras import fuente
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=int, default=1, help="Índice de cámara (default: 1)")
+    parser.add_argument("--source", type=fuente, default=1,
+                        help="Índice de cámara (default: 1) o URL del puente del celular, "
+                             "por ejemplo http://127.0.0.1:5002/stream")
     parser.add_argument("--backend", choices=("auto", "msmf", "dshow"), default="auto")
     parser.add_argument("--ancho", type=int, default=1920, help="Resolucion solicitada a la camara")
     parser.add_argument("--alto", type=int, default=1080)
@@ -76,7 +79,9 @@ def main():
     parser.add_argument("--imagen", type=Path, help="Probar una foto en vez de la cámara")
     parser.add_argument("--sin-ventana", action="store_true", help="Solo con --imagen")
     parser.add_argument("--salida", type=Path, help="Guardar comparación de --imagen")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if isinstance(args.source, str) and args.backend != "auto":
+        parser.error("Una URL de cámara necesita --backend auto")
     if (args.sin_ventana or args.salida) and not args.imagen:
         parser.error("--sin-ventana y --salida requieren --imagen")
     if args.ancho <= 0 or args.alto <= 0:
@@ -109,8 +114,9 @@ def main():
             cv2.createTrackbar(nombre, VENTANA, inicial,
                                15 if nombre == "Erosion px" else 255, lambda _: None)
         if foto is None:
-            flujo = FlujoVivo(args.modelo, args.source, args.backend,
-                              resolucion=(args.ancho, args.alto))
+            # La resolución de un celular la decide su página, no el PC.
+            resolucion = None if isinstance(args.source, str) else (args.ancho, args.alto)
+            flujo = FlujoVivo(args.modelo, args.source, args.backend, resolucion=resolucion)
             flujo.iniciar()
             print(f"Abriendo camara {args.source}. Acepte la notificacion del celular.", flush=True)
         actual = foto

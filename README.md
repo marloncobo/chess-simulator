@@ -233,6 +233,7 @@ Prueba HSV con cámara:
 
 ```powershell
 .\.venv\Scripts\python.exe -m herramientas.probar_color_hsv --source 1
+.\.venv\Scripts\python.exe -m herramientas.probar_color_hsv --source http://127.0.0.1:5002/stream
 ```
 
 Prueba HSV con fotografía, sin cámara ni ventana:

@@ -114,3 +114,23 @@ class PruebasColor(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PruebasHerramientaColor(unittest.TestCase):
+    def test_herramienta_color_acepta_url_del_celular(self):
+        from herramientas import probar_color_hsv as herramienta
+        url = 'http://127.0.0.1:5002/stream'
+        with patch.object(herramienta, 'FlujoVivo') as flujo, \
+                patch.object(herramienta.cv2, 'namedWindow'), patch.object(herramienta.cv2, 'resizeWindow'), \
+                patch.object(herramienta.cv2, 'createTrackbar'), patch.object(herramienta.cv2, 'imshow'), \
+                patch.object(herramienta.cv2, 'waitKey', return_value=ord('q')), \
+                patch.object(herramienta.cv2, 'getTrackbarPos', return_value=0), \
+                patch.object(herramienta.cv2, 'destroyAllWindows'):
+            flujo.return_value.resultados = None
+            with patch.object(herramienta, 'leer_ultimo', return_value=None):
+                herramienta.main(['--source', url])
+        self.assertEqual(flujo.call_args.args[1], url)
+        self.assertIsNone(flujo.call_args.kwargs['resolucion'])
+        with self.assertRaises(SystemExit):
+            herramienta.main(['--source', url, '--backend', 'dshow'])
+
