@@ -10,6 +10,13 @@ Desde la carpeta del proyecto, usando el entorno existente:
 .\.venv\Scripts\python.exe main.py --camara --source 1
 ```
 
+Con el celular por WiFi, inicie el puente y use su dirección de vídeo:
+
+```powershell
+.\.venv\Scripts\python.exe puente_iphone.py
+.\.venv\Scripts\python.exe main.py --camara --source http://127.0.0.1:5002/stream
+```
+
 Acepte la notificación del celular. Marque las esquinas del tablero o pulse **Cargar**
 si la cámara no cambió de posición. La calibración existente se conserva en `config/`.
 Si el programa estaba abierto durante la reorganización, ciérrelo y vuelva a iniciarlo.
@@ -226,6 +233,7 @@ Prueba HSV con cámara:
 
 ```powershell
 .\.venv\Scripts\python.exe -m herramientas.probar_color_hsv --source 1
+.\.venv\Scripts\python.exe -m herramientas.probar_color_hsv --source http://127.0.0.1:5002/stream
 ```
 
 Prueba HSV con fotografía, sin cámara ni ventana:

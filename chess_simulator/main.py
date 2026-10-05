@@ -179,7 +179,10 @@ def main(argv=None):
     grupo.add_argument("--imagen", type=Path, help="Fotografía a detectar; si se omite se abre un selector")
     grupo.add_argument("--entrada", type=Path, help="Observaciones JSON externas (modo de seguimiento existente)")
     grupo.add_argument("--camara", action="store_true", help="Detección en tiempo real; usa source=1")
-    parser.add_argument("--source", type=int, default=1, help="Índice de cámara (por defecto 1, celular)")
+    from herramientas.probar_dos_camaras import fuente
+    parser.add_argument("--source", type=fuente, default=1,
+                        help="Índice de cámara (por defecto 1) o URL del puente del celular, "
+                             "por ejemplo http://127.0.0.1:5002/stream")
     parser.add_argument("--backend", choices=("auto", "msmf", "dshow"), default="auto")
     parser.add_argument("--punto", choices=("base", "centro"), default="base",
                         help="Base aproximada para vista inclinada o centro para vista cenital")
@@ -188,7 +191,7 @@ def main(argv=None):
     parser.add_argument("--duracion", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--modelo", type=Path, default=MODELO, help="Modelo local de segmentación")
     parser.add_argument("--hsv-negra-max", type=int, default=85, help="V máximo para piezas negras")
-    parser.add_argument("--hsv-blanca-min", type=int, default=150, help="V mínimo para piezas blancas")
+    parser.add_argument("--hsv-blanca-min", type=int, default=125, help="V mínimo para piezas blancas")
     parser.add_argument("--hsv-saturacion-max", type=int, default=110, help="S máximo para piezas blancas")
     parser.add_argument("--hsv-erosion", type=int, default=3, help="Erosión interior de la máscara (0 a 15 px)")
     args = parser.parse_args(argv)
@@ -196,6 +199,8 @@ def main(argv=None):
         if not args.modelo.is_file():
             parser.error(f"El modelo local no existe: {args.modelo}")
         from chess_simulator.tiempo_real import ejecutar
+        if isinstance(args.source, str) and args.backend != "auto":
+            parser.error("Una URL de cámara necesita --backend auto")
         if not 0 < args.confianza <= 1:
             parser.error("--confianza debe estar entre 0 y 1")
         if not (0 <= args.hsv_negra_max < args.hsv_blanca_min <= 255
