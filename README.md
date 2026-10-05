@@ -149,6 +149,21 @@ indica la causa; una duda de color ya no cuenta como rescate por oclusión.
 La letra **H** identifica una pieza conservada del historial sin observación
 actual coincidente. Los contadores del panel describen propuestas, no precisión.
 
+### Probar con dos fotos (sin cámaras)
+
+Tome dos fotos del mismo tablero desde dos posiciones, sin mover nada entre
+una y otra, y ejecute:
+
+```powershell
+.\.venv\Scripts\python.exe -m herramientas.probar_fotos fotoA.jpg fotoB.jpg
+```
+
+La primera vez se marcan las esquinas a8, h8, h1, a1 de cada foto (Enter
+acepta, R repite); quedan guardadas para las siguientes ejecuciones. Corre la
+misma cadena que en vivo y muestra el mismo panel, más los tableros de cada
+foto y de la fusión en la terminal. Con `--guardar-par datos/verificacion/pares.json`
+añade el par al archivo de verificación para corregir su posición y medirlo.
+
 ### Medir aciertos con fotos reales
 
 `herramientas/evaluar_pares.py` corre el modelo y la fusión sobre pares de fotos
