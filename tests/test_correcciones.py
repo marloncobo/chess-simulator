@@ -179,6 +179,20 @@ class PruebasVaciasConDosCamaras(unittest.TestCase):
         self.assertIn((4, 4), fusion.desconocidas)
 
 
+class PruebasPanel(unittest.TestCase):
+    def test_sin_ver_y_sin_pieza_se_muestra_vacia(self):
+        from chess_simulator.diagnostico import CIEGAS, VACIA
+        from herramientas.panel_diagnostico import para_mostrar, casillas_en
+        posicion = [[""] * 8 for _ in range(8)]
+        posicion[7][0] = "T"
+        casillas = {(7, 0): {"estado": CIEGAS}, (7, 1): {"estado": CIEGAS}}
+        vista = para_mostrar(casillas, posicion)
+        self.assertEqual(vista[7, 0]["estado"], CIEGAS)   # pieza recordada: no se borra
+        self.assertEqual(vista[7, 1]["estado"], VACIA)
+        self.assertTrue(vista[7, 1]["sin_ver"])
+        self.assertEqual(casillas_en(vista, VACIA), ["b1"])
+
+
 def _camara(elevacion, distancia=11., focal=900., ancho=1280, alto=720):
     e = np.radians(elevacion)
     centro = np.array([4, 4 + distancia*np.cos(e), distancia*np.sin(e)])
