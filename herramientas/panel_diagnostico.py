@@ -46,8 +46,8 @@ INSIGNIA = {RESCATE_1: "1", RESCATE_2: "2", SOLO_1: "1!", SOLO_2: "2!",
 
 ETIQUETA = {
     AMBAS: "las ven las dos camaras",
-    RESCATE_1: "solo la camara 1:",
-    RESCATE_2: "solo la camara 2:",
+    RESCATE_1: "aporta solo la camara 1:",
+    RESCATE_2: "aporta solo la camara 2:",
     CONFLICTO: "las camaras discrepan:",
     CIEGAS: "sin ver ahora, se conserva la pieza:",
     VACIA: "vacias",
@@ -107,6 +107,10 @@ def dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimie
     y += 24
 
     # Un renglón por estado, con su color del tablero y las casillas.
+    # "Aporta solo la camara N" no dice que la otra no vea esa pieza: dice que
+    # la otra no dio una lectura fiable (tapada, confianza baja, color dudoso,
+    # o la clasificó como otra pieza que superó su tope). El motivo exacto
+    # aparece en CASILLAS A REVISAR.
     for estado in (AMBAS, RESCATE_1, RESCATE_2, CONFLICTO, CIEGAS, VACIA):
         grupo = {RESCATE_1: (RESCATE_1, SOLO_1), RESCATE_2: (RESCATE_2, SOLO_2)}.get(estado, (estado,))
         n = sum(cuenta.get(e, 0) for e in grupo)
@@ -196,9 +200,10 @@ AYUDA = [
     "",
     "EN EL TABLERO",
     "punto verde    la ven las dos camaras",
-    "borde azul 1   solo la ve la camara 1 (la 2 la tiene tapada)",
-    "borde naranja 2  solo la ve la camara 2 (la 1 la tiene tapada)",
-    "borde ambar 1! 2!  solo la ve una camara y la otra NO la ve tapada: confirmar",
+    "borde azul 1   la confirma la camara 1; la 2 la tiene tapada",
+    "borde naranja 2  la confirma la camara 2; la 1 la tiene tapada",
+    "borde ambar 1! 2!  la confirma una camara; la otra la vio dudosa o no la vio",
+    "               (el motivo de la otra camara sale en CASILLAS A REVISAR)",
     "letra H        pieza conservada del historial, no observada ahora",
     "borde rojo X   las camaras discrepan en la pieza",
     "rayado gris ?  pieza recordada que ahora ninguna camara alcanza a ver",
