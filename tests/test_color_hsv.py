@@ -87,7 +87,15 @@ class PruebasColor(unittest.TestCase):
             main(['--camara','--hsv-negra-max','90','--hsv-erosion','2'])
         self.assertEqual(ejecutar.call_args.args[1], 1)
         self.assertEqual(ejecutar.call_args.kwargs['parametros_hsv'],
-                         dict(negra_max=90, blanca_min=150, saturacion_max=110, erosion=2))
+                         dict(negra_max=90, blanca_min=125, saturacion_max=110, erosion=2))
+
+    def test_cli_acepta_url_del_celular(self):
+        url = 'http://127.0.0.1:5002/stream'
+        with patch('chess_simulator.tiempo_real.ejecutar') as ejecutar:
+            main(['--camara', '--source', url])
+        self.assertEqual(ejecutar.call_args.args[1], url)
+        with self.assertRaises(SystemExit):
+            main(['--camara', '--source', url, '--backend', 'dshow'])
 
     def test_pygame_dibuja_blancas_y_negras(self):
         pygame.font.init()

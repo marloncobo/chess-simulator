@@ -54,7 +54,12 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
     limite_calibracion = 0.
     historial_visible = []
     ultimo_diagnostico = None
-    calibracion = CONFIG / f"calibracion_camara_{source}.json"
+    if isinstance(source, str):
+        # Una URL no sirve como nombre de archivo; se identifica por su huella.
+        import hashlib
+        calibracion = CONFIG / f"calibracion_camara_url_{hashlib.sha256(source.encode()).hexdigest()[:12]}.json"
+    else:
+        calibracion = CONFIG / f"calibracion_camara_{source}.json"
     inicio = time.monotonic()
     # No se cambia a source=0 si el celular no responde.
     print(f"Abriendo únicamente source={source}; acepte la notificación en el celular.", flush=True)
