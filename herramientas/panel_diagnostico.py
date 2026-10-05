@@ -12,7 +12,7 @@ import numpy as np
 from chess_simulator.seguimiento import nombre
 from herramientas.tablero_diagnostico import dibujar as dibujar_pygame
 from chess_simulator.diagnostico import (
-    AMBAS, RESCATE_1, RESCATE_2, SOLO_1, SOLO_2, CONFLICTO, CIEGAS,
+    AMBAS, RESCATE_1, RESCATE_2, SOLO_1, SOLO_2, CONFLICTO, CIEGAS, VACIA,
     contar_clases, problemas, resumen,
 )
 
@@ -38,18 +38,41 @@ COLOR = {
     SOLO_2:    (80, 220, 255),
     CONFLICTO: (80, 80, 255),     # rojo
     CIEGAS:    (130, 130, 130),   # gris
+    VACIA:     (200, 200, 200),
 }
 
 INSIGNIA = {RESCATE_1: "1", RESCATE_2: "2", SOLO_1: "1!", SOLO_2: "2!",
             CONFLICTO: "X", CIEGAS: "?"}
 
 ETIQUETA = {
-    AMBAS: "coincidencias entre las dos",
-    RESCATE_1: "solo las ve la camara 1",
-    RESCATE_2: "solo las ve la camara 2",
-    CONFLICTO: "las camaras discrepan",
-    CIEGAS: "inciertas: ver motivo abajo",
+    AMBAS: "las ven las dos camaras",
+    RESCATE_1: "aporta solo la camara 1:",
+    RESCATE_2: "aporta solo la camara 2:",
+    CONFLICTO: "las camaras discrepan:",
+    CIEGAS: "sin ver ahora, se conserva la pieza:",
+    VACIA: "vacias",
 }
+
+
+def para_mostrar(casillas, posicion):
+    """Una casilla que ninguna cámara ve bien y en la que no se recuerda
+    ninguna pieza se muestra como vacía: es lo que el seguimiento ya cree
+    (conserva el último estado confirmado). Solo quedan como "sin ver" las
+    que tienen una pieza recordada que ahora no se puede comprobar.
+    """
+    if not casillas:
+        return casillas
+    salida = {}
+    for (f, c), info in casillas.items():
+        if info["estado"] == CIEGAS and not (posicion and posicion[f][c]):
+            info = {**info, "estado": VACIA, "sin_ver": True}
+        salida[f, c] = info
+    return salida
+
+
+def casillas_en(casillas, *estados):
+    return sorted((nombre(f, c) for (f, c), d in casillas.items() if d["estado"] in estados),
+                  key=lambda n: (n[0], n[1]))
 
 
 def _txt(img, texto, punto, escala=.45, color=BLANCO, grosor=1):
@@ -83,33 +106,31 @@ def dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimie
     _txt(lienzo, "QUE APORTA CADA CAMARA", (x0, y), .52, BLANCO, 1)
     y += 24
 
-    # Fila de chips: un renglón por estado, con su color del tablero
-    for estado in (AMBAS, RESCATE_1, RESCATE_2, CONFLICTO, CIEGAS):
-        n = cuenta.get(estado, 0)
-        if estado == CONFLICTO:
-            n = cuenta.get(CONFLICTO, 0)
-        if estado == RESCATE_1:
-            n += cuenta.get(SOLO_1, 0)
-        if estado == RESCATE_2:
-            n += cuenta.get(SOLO_2, 0)
+    # Un renglón por estado, con su color del tablero y las casillas.
+    # "Aporta solo la camara N" no dice que la otra no vea esa pieza: dice que
+    # la otra no dio una lectura fiable (tapada, confianza baja, color dudoso,
+    # o la clasificó como otra pieza que superó su tope). El motivo exacto
+    # aparece en CASILLAS A REVISAR.
+    for estado in (AMBAS, RESCATE_1, RESCATE_2, CONFLICTO, CIEGAS, VACIA):
+        grupo = {RESCATE_1: (RESCATE_1, SOLO_1), RESCATE_2: (RESCATE_2, SOLO_2)}.get(estado, (estado,))
+        n = sum(cuenta.get(e, 0) for e in grupo)
+        if estado == CIEGAS and not n:
+            continue
         color = COLOR[estado]
         cv2.rectangle(lienzo, (x0, y - 10), (x0 + 13, y + 2), color, -1)
         _txt(lienzo, f"{n:>2}", (x0 + 20, y), .47, BLANCO, 1)
         _txt(lienzo, ETIQUETA[estado], (x0 + 46, y), .44, TENUE)
+        if estado == VACIA:
+            sin_ver = sum(1 for d in casillas.values() if d.get("sin_ver"))
+            if sin_ver:
+                _txt(lienzo, f"({sin_ver} sin verse ahora: se mantiene lo ultimo visto)",
+                     (x0 + 100, y), .42, TENUE)
+        elif estado != AMBAS and n:
+            lista = " ".join(casillas_en(casillas, *grupo))
+            ancho = cv2.getTextSize(ETIQUETA[estado], cv2.FONT_HERSHEY_SIMPLEX, .44, 1)[0][0]
+            _txt(lienzo, lista[:58], (x0 + 46 + ancho + 10, y), .44, color, 1)
         y += 21
-
-    r1 = cuenta.get(RESCATE_1, 0) + cuenta.get(SOLO_1, 0)
-    r2 = cuenta.get(RESCATE_2, 0) + cuenta.get(SOLO_2, 0)
-    y += 6
-    if casillas:
-        if r1 + r2 == 0:
-            aviso = "Sin detecciones exclusivas; ambas pueden corroborar la posicion"
-            color = (80, 220, 255)
-        else:
-            aviso = f"Detecciones exclusivas: camara 1 = {r1}, camara 2 = {r2} (por validar)"
-            color = COLOR[AMBAS]
-        _txt(lienzo, aviso, (x0, y), .44, color)
-    y += 26
+    y += 14
 
     # --- Conteo por clase ---
     _txt(lienzo, "PIEZAS POR CLASE", (x0, y), .52, BLANCO, 1)
@@ -133,7 +154,7 @@ def dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimie
     # --- Casillas a revisar ---
     _txt(lienzo, "CASILLAS A REVISAR", (x0, y), .52, BLANCO, 1)
     y += 21
-    lista, cuantas = problemas(casillas, limite=6) if casillas else ([], 0)
+    lista, cuantas = problemas(casillas, limite=5) if casillas else ([], 0)
     if not lista:
         _txt(lienzo, "ninguna" if casillas else "esperando vistas", (x0, y), .44, TENUE)
         y += 19
@@ -159,6 +180,7 @@ def dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimie
 
 def panel_inferior(posicion, casillas, dudosas, inferencia, mensaje, movimiento):
     lienzo = np.full((ALTO, ANCHO, 3), FONDO, np.uint8)
+    casillas = para_mostrar(casillas, posicion)
     dibujar_tablero(lienzo, posicion, casillas, dudosas)
     dibujar_diagnostico(lienzo, posicion, casillas, inferencia, mensaje, movimiento)
     return lienzo
@@ -178,12 +200,14 @@ AYUDA = [
     "",
     "EN EL TABLERO",
     "punto verde    la ven las dos camaras",
-    "borde azul 1   solo la ve la camara 1 (la 2 la tiene tapada)",
-    "borde naranja 2  solo la ve la camara 2",
-    "borde ambar 1! 2!  deteccion unilateral: requiere mas confirmacion",
+    "borde azul 1   la confirma la camara 1; la 2 la tiene tapada",
+    "borde naranja 2  la confirma la camara 2; la 1 la tiene tapada",
+    "borde ambar 1! 2!  la confirma una camara; la otra la vio dudosa o no la vio",
+    "               (el motivo de la otra camara sale en CASILLAS A REVISAR)",
     "letra H        pieza conservada del historial, no observada ahora",
     "borde rojo X   las camaras discrepan en la pieza",
-    "rayado gris ?  incertidumbre: color, movimiento, fondo u oclusion",
+    "rayado gris ?  pieza recordada que ahora ninguna camara alcanza a ver",
+    "casilla limpia  vacia (tambien si ahora nadie la ve y no habia pieza)",
     "",
     "T torre  C caballo  A alfil  D dama  R rey  P peon",
 ]

@@ -52,13 +52,21 @@ calibración. La captura usa source=1; no cambia automáticamente a la cámara 0
 
 Las detecciones se agrupan por casilla. Duplicados del mismo tipo y con apoyos muy
 próximos se reducen a uno; una clasificación distinta solo se descarta si coincide
-el apoyo y la diferencia de confianza es clara. Los conflictos restantes y las
-detecciones con confianza menor de 0.5 se marcan como desconocidos para esa casilla.
+el apoyo y la diferencia de confianza es clara. Una lectura débil (menor de 0.5)
+junto a una firme en la misma casilla se ignora. Los conflictos restantes y las
+detecciones con confianza menor de 0.5 se marcan como desconocidos para esa casilla;
+si una casilla tiene varios motivos de duda, se conservan todos ("Color dudoso +
+Baja confianza").
+
+El punto de apoyo se calcula sobre el plano del tablero: se proyecta el borde
+delantero de la base y se retrocede medio ancho de base, alejándose de la cámara.
+El cuantil inferior de la máscara quedaba delante del centro real de la pieza.
 
 Cada casilla se confirma independientemente: una duda ya no bloquea las otras 63.
-La restricción del prototipo de **máximo cuatro torres** se comparte con el modo
-fotografía. Se aplica después de agrupar duplicados por casilla y conserva las
-cuatro detecciones de torre con mayor confianza. Las sobrantes se marcan como
+Los topes por clase del prototipo (2 reyes y como máximo 1 por color, 2 damas,
+4 torres, 4 alfiles, 4 caballos y 16 peones, en `reglas_deteccion.py`) se aplican
+después de agrupar duplicados por casilla y conservan las detecciones de mayor
+confianza de cada clase. Las sobrantes se marcan como
 dudosas, sin inventar que son peones u otra clase. El estado acumulado también
 respeta el máximo, incluyendo piezas retenidas de fotogramas anteriores.
 Un borde naranja señala una casilla dudosa; conserva su última pieza confirmada,
@@ -210,7 +218,7 @@ el resultado y avisa de que ya no recibe datos.
 - `vision_vivo.py`: máscaras, puntos de apoyo y asignación a casillas.
 - `color_hsv.py`: clasificación compartida del color sobre el interior de las máscaras.
 - `tiempo_real.py`: interfaz de vídeo y calibración interactiva.
-- `reglas_deteccion.py`: restricción compartida de cuatro torres.
+- `reglas_deteccion.py`: topes por clase de pieza y umbrales de confianza compartidos.
 - `entrada.py`: contrato y lectura/publicación de la última observación JSON.
 - `tablero_pygame.py`: consumo exclusivo de observaciones a 10 Hz; dibujo a 60 FPS.
 - `simular_entrada.py`: productor de ejemplo sin cámara ni modelo.
@@ -245,7 +253,7 @@ indican blanca, los azules con N negra y los naranjas con ? color dudoso.
 Una casilla con color dudoso conserva su estado anterior y recibe borde naranja;
 si nunca se confirmó, permanece vacía hasta obtener muestras fiables.
 Las demás casillas continúan actualizándose. El filtro temporal también estabiliza
-el color; el límite sigue siendo cuatro torres en total, contando ambos colores.
+el color; los topes por clase cuentan ambos colores, salvo el rey (uno por color).
 
 Los ajustes realizados con los deslizadores de la prueba no se guardan automáticamente.
 Para usar esos valores en el modo cámara, páselos al iniciar, por ejemplo:

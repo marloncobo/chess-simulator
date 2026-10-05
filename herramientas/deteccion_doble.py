@@ -82,17 +82,33 @@ class SesionDoble:
         self.seguimiento.invalidar("Esperando nuevas vistas estables")
 
     def comprobar_camaras(self):
+        """Un corte del stream no mueve la cámara: la calibración se conserva.
+
+        Solo se borra si la cámara vuelve con otra resolución, porque entonces
+        las esquinas en píxeles ya no corresponden. Un reinicio sí descarta
+        los resultados en curso (revisión nueva), que vienen de cuadros viejos.
+        Si la cámara se movió de verdad, el usuario recalibra con 1/2.
+        """
         for i, camara in enumerate(self.camaras):
             frame = camara.estado.get("frame")
-            resolucion = (frame.shape[1], frame.shape[0]) if frame is not None else self.resoluciones[i]
-            if camara.reinicios != self.generaciones[i] or resolucion != self.resoluciones[i]:
+            resolucion = (frame.shape[1], frame.shape[0]) if frame is not None else None
+            if camara.reinicios != self.generaciones[i]:
                 self.generaciones[i] = camara.reinicios
-                self.resoluciones[i] = resolucion
-                self.esquinas[i] = []
-                if self.seleccion == i:
-                    self.seleccion = self.congelada = None
                 self.invalidar()
-                self.mensaje = "Calibre con 1/2 o pulse L si las camaras no cambiaron de posicion"
+                if self.esquinas[i]:
+                    self.mensaje = (f"Camara {i+1} reconectada; calibracion conservada "
+                                    f"(pulse {i+1} si la camara se movio)")
+            if resolucion is None or resolucion == self.resoluciones[i]:
+                continue
+            anterior, self.resoluciones[i] = self.resoluciones[i], resolucion
+            if anterior is None:
+                continue  # Primera imagen: aún no había nada calibrado con otra resolución.
+            self.esquinas[i] = []
+            if self.seleccion == i:
+                self.seleccion = self.congelada = None
+            self.invalidar()
+            self.mensaje = (f"Camara {i+1} cambio de resolucion; calibre con {i+1} "
+                            "o pulse L si hay una calibracion guardada para esta resolucion")
 
     def comenzar_calibracion(self, indice):
         if not vigente(self.camaras[indice].estado, time.monotonic()):

@@ -52,3 +52,13 @@ class PruebasPuenteIphone(unittest.TestCase):
             generador.close()
             with puente._lock:
                 puente._ultimo.update(anterior)
+
+
+class PruebasPuertos(unittest.TestCase):
+    def test_dos_copias_con_puertos_distintos(self):
+        self.assertEqual((puente.argumentos([]).puerto_celular, puente.argumentos([]).puerto_stream), (5001, 5002))
+        args = puente.argumentos(["--puerto-celular", "5003", "--puerto-stream", "5004"])
+        self.assertEqual((args.puerto_celular, args.puerto_stream), (5003, 5004))
+        for malos in (["--puerto-celular", "5002"], ["--puerto-stream", "80"]):
+            with self.assertRaises(SystemExit):
+                puente.argumentos(malos)

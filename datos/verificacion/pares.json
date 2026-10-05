@@ -1,0 +1,18 @@
+{
+  "nota": "Esquinas marcadas a mano sobre el borde exterior de la cuadricula, en orden a8, h8, h1, a1. Posicion leida de las dos fotos.",
+  "pares": [
+    {
+      "nombre": "medio juego 1",
+      "a": "../../foto1.jpeg",
+      "b": "../../foto2.jpeg",
+      "esquinas_a": [[1338, 87], [1482, 1054], [82, 1048], [313, 124]],
+      "esquinas_b": [[1509, 978], [105, 997], [273, 62], [1276, 67]],
+      "posicion": {
+        "a2": "P", "b1": "T", "b4": "T", "c6": "C", "d2": "P", "d3": "P", "e2": "C", "e3": "P",
+        "e4": "A", "f2": "D", "f3": "P", "f4": "R", "f7": "A", "g2": "P", "g4": "P", "h3": "P",
+        "a7": "p", "b5": "a", "b7": "p", "c3": "p", "c5": "t", "d5": "p", "d7": "p", "e5": "r",
+        "e6": "c", "e7": "d", "f5": "p", "g6": "p", "g8": "c", "h5": "p", "h6": "a", "h7": "t"
+      }
+    }
+  ]
+}

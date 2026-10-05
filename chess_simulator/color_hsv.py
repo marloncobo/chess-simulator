@@ -3,9 +3,14 @@ import cv2
 import numpy as np
 
 
-def clasificar(hsv, poligono, negra_max=85, blanca_min=150, saturacion_max=110,
+def clasificar(hsv, poligono, negra_max=85, blanca_min=125, saturacion_max=110,
                erosion=3):
-    """Medianas S/V de la máscara interior; H no distingue blanco de negro."""
+    """Medianas S/V de la máscara interior; H no distingue blanco de negro.
+
+    blanca_min=125 (antes 150): en las fotos de referencia las negras dan
+    V <= 28 y las blancas V >= 136; con contraluz, tres blancas de la cámara 2
+    quedaban DUDOSAS con V entre 136 y 144. Un gris medio (V ~115) sigue en duda.
+    """
     if not 0 <= negra_max < blanca_min <= 255:
         raise ValueError("V negra max debe ser menor que V blanca min")
     if not 0 <= saturacion_max <= 255 or not isinstance(erosion, int) or not 0 <= erosion <= 15:

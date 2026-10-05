@@ -56,7 +56,10 @@ def argumentos(argv=None):
     parser.add_argument("--detectar", action="store_true", help="Calibrar y combinar detecciones de piezas")
     from chess_simulator.rutas import MODELO
     parser.add_argument("--modelo", type=Path, default=MODELO)
-    parser.add_argument("--confianza", type=float, default=.5, help="Confianza minima de deteccion (0.5 a 1)")
+    from chess_simulator.reglas_deteccion import CONFIANZA_DETECTOR, UMBRAL_DUDA
+    parser.add_argument("--confianza", type=float, default=CONFIANZA_DETECTOR,
+                        help=f"Filtro de YOLO (0.05 a 1, por defecto {CONFIANZA_DETECTOR}). Entre este valor "
+                             f"y {UMBRAL_DUDA} la deteccion no afirma pieza: deja la casilla en duda")
     args = parser.parse_args(argv)
     if args.sources[0] == args.sources[1]:
         parser.error("Indique dos fuentes distintas")
@@ -66,8 +69,8 @@ def argumentos(argv=None):
         parser.error("--timeout debe ser un numero finito mayor o igual a 2")
     if not math.isfinite(args.max_desfase_ms) or args.max_desfase_ms <= 0:
         parser.error("--max-desfase-ms debe ser un numero finito positivo")
-    if not .5 <= args.confianza <= 1:
-        parser.error("--confianza debe estar entre 0.5 y 1")
+    if not math.isfinite(args.confianza) or not .05 <= args.confianza <= 1:
+        parser.error("--confianza debe estar entre 0.05 y 1")
     if args.detectar and not args.modelo.is_file():
         parser.error(f"No existe el modelo: {args.modelo}")
     args.configuraciones = []

@@ -153,7 +153,7 @@ def dibujar(posicion, casillas, dudosas, casilla_px=47, margen=(34, 14)):
                                         etiqueta.get_width() + 4, etiqueta.get_height() + 2)
                     pygame.draw.rect(sup, color, fondo)
                     sup.blit(etiqueta, (fondo.x + 2, fondo.y + 1))
-            elif (fila, col) in (dudosas or ()):
+            elif (fila, col) in (dudosas or ()) and not (info and info.get("sin_ver")):
                 pygame.draw.rect(sup, (255, 160, 40), rect, 2)
 
             # No presentar una pieza retenida como si acabara de observarse.

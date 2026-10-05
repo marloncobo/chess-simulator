@@ -24,11 +24,12 @@ ESTADOS
 """
 from collections import Counter
 
+from chess_simulator.reglas_deteccion import LIMITES
 from chess_simulator.seguimiento import nombre
 
 # Piezas de un juego estándar. Las promociones alteran el reparto pero
 # nunca el total, así que un exceso por clase señala un error probable.
-ESPERADAS = {"R": 2, "D": 2, "T": 4, "A": 4, "C": 4, "P": 16}
+ESPERADAS = LIMITES
 
 NOMBRE_CLASE = {"R": "rey", "D": "dama", "T": "torre",
                 "A": "alfil", "C": "caballo", "P": "peon"}
@@ -64,8 +65,10 @@ def diagnosticar(observaciones, fusion=None):
             dudosa2 = (f, c) in o2.desconocidas
             motivo1 = getattr(o1, "motivos", {}).get((f, c), "Duda sin clasificar" if dudosa1 else "")
             motivo2 = getattr(o2, "motivos", {}).get((f, c), "Duda sin clasificar" if dudosa2 else "")
-            tapada1 = motivo1 == "Oclusion por silueta"
-            tapada2 = motivo2 == "Oclusion por silueta"
+            # Los motivos se acumulan ("Baja confianza + Oclusion por silueta"):
+            # basta con que la oclusión sea uno de ellos.
+            tapada1 = "Oclusion por silueta" in motivo1.split(" + ")
+            tapada2 = "Oclusion por silueta" in motivo2.split(" + ")
             p1 = "" if dudosa1 else o1.tablero[f][c]
             p2 = "" if dudosa2 else o2.tablero[f][c]
 
@@ -80,15 +83,20 @@ def diagnosticar(observaciones, fusion=None):
                 estado = RESCATE_2 if tapada1 else SOLO_2
                 detalle = (f"vista 1: {motivo1}" if dudosa1
                            else "vista 1: ausencia; confirmar deteccion unilateral")
-            elif dudosa1 or dudosa2:
+            elif (dudosa1 or dudosa2) and not (fusion and (f, c) not in fusion.desconocidas):
                 estado = CIEGAS
                 detalle = " / ".join(f"v{i}: {m}" for i, m in ((1, motivo1), (2, motivo2)) if m)
+            elif dudosa1 or dudosa2:
+                # Una cámara no la veía y la otra la vio vacía: se acepta como vacía.
+                estado = VACIA
+                detalle = f"vacia segun vista {2 if dudosa1 else 1}; la otra: {motivo1 or motivo2}"
             else:
                 estado, detalle = VACIA, ""
 
             confirmada = fusion.tablero[f][c] if fusion else ""
             if fusion and (f, c) in fusion.desconocidas and (p1 or p2) and estado != CONFLICTO:
-                detalle += "; pendiente por confianza o posicion"
+                motivo = getattr(fusion, "motivos", {}).get((f, c), "confianza o posicion")
+                detalle += f"; pendiente: {motivo}"
             casillas[(f, c)] = {"estado": estado, "pieza": confirmada,
                                 "v1": o1.tablero[f][c], "v2": o2.tablero[f][c],
                                 "tapada1": tapada1, "tapada2": tapada2,
