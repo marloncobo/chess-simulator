@@ -136,10 +136,41 @@ def observar_vista(detecciones, esquinas, secuencia, movimiento=()):
     return con_dudas(obs, motivos, apoyos)
 
 
+# Motivos que solo dicen "esta cámara no alcanza a ver la casilla": no son
+# evidencia de que haya una pieza. Si la otra cámara ve la casilla vacía con
+# su fondo verificado, esa ausencia vale. Cualquier otro motivo (baja
+# confianza, color dudoso, conflicto, límite, apoyo en el borde, movimiento,
+# fondo no verificable) sí sugiere una pieza o una mano, y mantiene la duda.
+#
+# "Fondo no verificable" NO entra: significa que la casilla no se parece al
+# tablero vacío, y eso es justo lo que se ve cuando hay una pieza que el
+# modelo no detectó (medido: una torre blanca sobre casilla clara que el
+# modelo pierde en ambas vistas solo la delata ese motivo).
+SOLO_FALTA_DE_VISTA = frozenset({"Oclusion por silueta"})
+
+
+def _ausencia_fiable(obs, f, c):
+    return (f, c) not in obs.desconocidas and not obs.tablero[f][c] and (obs.completa or obs.desconocidas)
+
+
+def _sin_vista(obs, f, c):
+    motivo = getattr(obs, "motivos", {}).get((f, c), "")
+    causas = set(motivo.split(" + ")) if motivo else set()
+    return (f, c) in obs.desconocidas and causas and causas <= SOLO_FALTA_DE_VISTA
+
+
+def vacia_confirmada(vistas, f, c):
+    """Vacía si al menos una vista la ve vacía con fondo verificado y la otra
+    también, o solo no alcanza a verla porque otra pieza la tapa."""
+    fiables = [_ausencia_fiable(o, f, c) for o in vistas]
+    return any(fiables) and all(fi or _sin_vista(o, f, c) for fi, o in zip(fiables, vistas))
+
+
 def fusionar(vistas, secuencia, confianza_unilateral=.7):
     """Una evidencia positiva basta; los conflictos quedan sin confirmar.
 
-    Vacío requiere ausencia fiable en AMBAS vistas. No se suman probabilidades
+    Vacío requiere una ausencia fiable y que la otra vista no aporte indicios de
+    pieza (ver vacia_confirmada). No se suman probabilidades
     del mismo modelo como si fueran mediciones independientes: se toma el max.
 
     Devuelve una Vista: además del tablero lleva en `motivos` por qué quedó
@@ -167,8 +198,7 @@ def fusionar(vistas, secuencia, confianza_unilateral=.7):
                 piezas.append({"casilla": casilla, "pieza": candidatas[0][1]})
                 confianzas[casilla] = max(conf for _, _, conf in candidatas)
                 procedencias[casilla] = "+".join(str(i+1) for i, _, _ in candidatas)
-            elif any((f, c) in obs.desconocidas or (not obs.completa and not obs.desconocidas)
-                     for obs in vistas):
+            elif not vacia_confirmada(vistas, f, c):
                 dudas.append(casilla)
                 causas = [f"v{i+1}: {getattr(obs, 'motivos', {}).get((f, c), 'duda')}"
                           for i, obs in enumerate(vistas) if (f, c) in obs.desconocidas]

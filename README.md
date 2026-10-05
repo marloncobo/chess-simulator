@@ -177,8 +177,10 @@ Una coincidencia de ambas vistas conserva la confirmación normal (al menos
 3 muestras y 0.6 s). Una pieza vista solo por una cámara exige confianza mínima
 0.70, al menos 5 muestras y 1.5 s; las detecciones más débiles quedan pendientes.
 Los conflictos de tipo/color conservan la última posición sin elegir un ganador.
-Para retirar una pieza confirmada se requieren ausencias verificables en ambas
-vistas y al menos 2 segundos de estabilidad.
+Una casilla se da por vacía cuando una vista la ve vacía con el fondo verificado
+y la otra también, o solo la tiene tapada por otra pieza. Si la otra vista ve
+algo (fondo que no parece vacío, detección débil, movimiento), queda en duda.
+Retirar una pieza confirmada requiere además 2 segundos de estabilidad.
 
 Si una cámara se reconecta con la misma resolución, su calibración se conserva:
 un corte del stream no implica que se haya movido. Solo se borra si la resolución

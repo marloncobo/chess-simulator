@@ -83,9 +83,13 @@ def diagnosticar(observaciones, fusion=None):
                 estado = RESCATE_2 if tapada1 else SOLO_2
                 detalle = (f"vista 1: {motivo1}" if dudosa1
                            else "vista 1: ausencia; confirmar deteccion unilateral")
-            elif dudosa1 or dudosa2:
+            elif (dudosa1 or dudosa2) and not (fusion and (f, c) not in fusion.desconocidas):
                 estado = CIEGAS
                 detalle = " / ".join(f"v{i}: {m}" for i, m in ((1, motivo1), (2, motivo2)) if m)
+            elif dudosa1 or dudosa2:
+                # Una cámara no la veía y la otra la vio vacía: se acepta como vacía.
+                estado = VACIA
+                detalle = f"vacia segun vista {2 if dudosa1 else 1}; la otra: {motivo1 or motivo2}"
             else:
                 estado, detalle = VACIA, ""
 

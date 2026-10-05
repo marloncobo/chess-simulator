@@ -148,6 +148,37 @@ class PruebasMotivos(unittest.TestCase):
         self.assertEqual(fusion.motivos[2, 6], "Las vistas discrepan: t / p")
 
 
+class PruebasVaciasConDosCamaras(unittest.TestCase):
+    """Una casilla tapada en una cámara y vista vacía en la otra es vacía, no incierta."""
+
+    def vistas(self, motivo_1):
+        from chess_simulator.fusion_camaras import con_dudas
+        base = observar_vista([], ESQUINAS, 1)
+        return [con_dudas(base, {(4, 4): motivo_1}), base]
+
+    def test_oclusion_en_una_y_vacia_en_otra_es_vacia(self):
+        from chess_simulator.diagnostico import diagnosticar, VACIA
+        vistas = self.vistas("Oclusion por silueta")
+        fusion, _ = fusionar(vistas, 1)
+        self.assertNotIn((4, 4), fusion.desconocidas)
+        self.assertEqual(fusion.tablero[4][4], "")
+        self.assertEqual(diagnosticar(vistas, fusion)[4, 4]["estado"], VACIA)
+
+    def test_indicios_de_pieza_mantienen_la_duda(self):
+        for motivo in ("Fondo no verificable", "Baja confianza", "Movimiento local",
+                       "Oclusion por silueta + Baja confianza", "Apoyo cerca del borde"):
+            with self.subTest(motivo=motivo):
+                fusion, _ = fusionar(self.vistas(motivo), 1)
+                self.assertIn((4, 4), fusion.desconocidas)
+
+    def test_tapada_en_las_dos_sigue_en_duda(self):
+        from chess_simulator.fusion_camaras import con_dudas
+        base = observar_vista([], ESQUINAS, 1)
+        tapada = con_dudas(base, {(4, 4): "Oclusion por silueta"})
+        fusion, _ = fusionar([tapada, tapada], 1)
+        self.assertIn((4, 4), fusion.desconocidas)
+
+
 def _camara(elevacion, distancia=11., focal=900., ancho=1280, alto=720):
     e = np.radians(elevacion)
     centro = np.array([4, 4 + distancia*np.cos(e), distancia*np.sin(e)])
