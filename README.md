@@ -2,6 +2,53 @@
 
 Detección de piezas de ajedrez mediante cámara y representación en Pygame.
 
+## Brazo Kinova: coordenadas con MoveIt 2
+
+La carpeta `brazo_kinova/` permite probar el movimiento de un Kinova Gen3 de
+seis articulaciones con pinza Robotiq 2F-85 a una coordenada XYZ. MoveIt 2
+resuelve la cinemática y planifica el movimiento; no es necesario definir
+manualmente los ángulos de cada articulación. Esta interfaz es una prueba
+independiente: todavía no transforma las casillas detectadas del tablero en
+órdenes de movimiento del brazo.
+
+### Iniciar desde Windows + WSL
+
+Con el entorno preparado, abre con doble clic
+`brazo_kinova/simular_brazo_wsl.cmd`, o ejecuta desde PowerShell en la raíz:
+
+```powershell
+.\brazo_kinova\simular_brazo_wsl.cmd
+```
+
+El lanzador inicia Ubuntu automáticamente, carga ROS y el workspace, arranca
+MoveIt con hardware ficticio y abre RViz y la interfaz XYZ. RViz muestra el
+estado del brazo sin repetir la animación de la trayectoria planificada.
+No hace falta abrir Ubuntu ni VS Code previamente, ni conectar el brazo físico.
+
+Requisitos previos:
+
+- WSL2 con la distribución `Ubuntu-22.04` y WSLg para mostrar las ventanas.
+- ROS 2 Humble, MoveIt 2 y `python3-tk` instalados en Ubuntu.
+- Workspace Kortex compilado en `~/kinova_revision/ros2_ws`, con el paquete
+  `kinova_gen3_6dof_robotiq_2f_85_moveit_config` disponible.
+- Los archivos de `brazo_kinova/` juntos en el proyecto.
+
+El lanzador no instala ni compila dependencias. Una vez preparado el entorno,
+el uso habitual no requiere internet. Mantén abierta la terminal que aparece;
+cierra la interfaz XYZ o pulsa **Ctrl+C** para terminar la sesión.
+
+Para usar otro workspace:
+
+```powershell
+.\brazo_kinova\simular_brazo_wsl.cmd --workspace /home/semillero/ros2_ws
+```
+
+La parte del brazo utiliza Python de Ubuntu; la detección y las cámaras pueden
+seguir ejecutándose en Windows con su `.venv`. Los lanzadores WSL son
+independientes del `simular_brazo.sh` original de los demás colaboradores.
+Consulta [la guía del brazo](brazo_kinova/README.md) y las
+[opciones de WSL](brazo_kinova/WSL.md).
+
 ## Iniciar
 
 Desde la carpeta del proyecto, usando el entorno existente:
