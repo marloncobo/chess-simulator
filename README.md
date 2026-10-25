@@ -4,8 +4,8 @@ Detección de piezas de ajedrez mediante cámara y representación en Pygame.
 
 ## Brazo Kinova: coordenadas con MoveIt 2
 
-La carpeta `brazo_kinova/` permite probar el movimiento de un Kinova Gen3 de
-seis articulaciones con pinza Robotiq 2F-85 a una coordenada XYZ. MoveIt 2
+La carpeta `brazo_kinova/` permite probar el movimiento de un Kinova Gen3 Lite de
+seis articulaciones con su pinza Gen3 Lite 2F a una coordenada XYZ. MoveIt 2
 resuelve la cinemática y planifica el movimiento; no es necesario definir
 manualmente los ángulos de cada articulación. Esta interfaz es una prueba
 independiente: todavía no transforma las casillas detectadas del tablero en
@@ -25,12 +25,19 @@ MoveIt con hardware ficticio y abre RViz y la interfaz XYZ. RViz muestra el
 estado del brazo sin repetir la animación de la trayectoria planificada.
 No hace falta abrir Ubuntu ni VS Code previamente, ni conectar el brazo físico.
 
+También se añade un tablero virtual de 44 × 44 cm y una pieza cilíndrica de
+6 cm de alto en `d4`, como obstáculos para MoveIt y geometría visible en RViz.
+Las medidas y la ubicación están en `brazo_kinova/escena_virtual.json`.
+Reinicia el lanzador tras cambiar ese archivo. Para iniciar sin la escena, usa
+`simular_brazo_wsl.cmd --sin-tablero`. La pieza todavía no tiene agarre ni
+física de contacto; su diámetro y el grosor del tablero son provisionales.
+
 Requisitos previos:
 
 - WSL2 con la distribución `Ubuntu-22.04` y WSLg para mostrar las ventanas.
 - ROS 2 Humble, MoveIt 2 y `python3-tk` instalados en Ubuntu.
 - Workspace Kortex compilado en `~/kinova_revision/ros2_ws`, con el paquete
-  `kinova_gen3_6dof_robotiq_2f_85_moveit_config` disponible.
+  `kinova_gen3_lite_moveit_config` y `kortex_bringup` disponibles.
 - Los archivos de `brazo_kinova/` juntos en el proyecto.
 
 El lanzador no instala ni compila dependencias. Una vez preparado el entorno,
@@ -45,7 +52,8 @@ Para usar otro workspace:
 
 La parte del brazo utiliza Python de Ubuntu; la detección y las cámaras pueden
 seguir ejecutándose en Windows con su `.venv`. Los lanzadores WSL son
-independientes del `simular_brazo.sh` original de los demás colaboradores.
+compatibles con `simular_brazo.sh`, que usa el mismo modelo Lite y permite
+elegir el workspace de cada colaborador.
 Consulta [la guía del brazo](brazo_kinova/README.md) y las
 [opciones de WSL](brazo_kinova/WSL.md).
 
