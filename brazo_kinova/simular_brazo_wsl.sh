@@ -3,17 +3,19 @@
 set -eo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${KINOVA_WS:-$HOME/kinova_revision/ros2_ws}"
-CONFIG=kinova_gen3_6dof_robotiq_2f_85_moveit_config
+CONFIG=kinova_gen3_lite_moveit_config
 GUI=true
 RVIZ=true
+TABLERO=true
 usage() {
-  echo "Uso: bash simular_brazo_wsl.sh [--workspace RUTA] [--sin-rviz] [--sin-gui]"
+  echo "Uso: bash simular_brazo_wsl.sh [--workspace RUTA] [--sin-rviz] [--sin-gui] [--sin-tablero]"
 }
 while (($#)); do
   case "$1" in
     --workspace) [[ $# -ge 2 ]] || { usage; exit 2; }; WORKSPACE="$2"; shift 2 ;;
     --sin-rviz) RVIZ=false; shift ;;
     --sin-gui) GUI=false; shift ;;
+    --sin-tablero) TABLERO=false; shift ;;
     --help|-h) usage; exit 0 ;;
     *) usage; exit 2 ;;
   esac
@@ -61,8 +63,12 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 start() { setsid "$@" 9>&- & pids+=("$!"); }
-echo "Iniciando Kinova ficticio. Workspace: $WORKSPACE"
+echo "Iniciando Kinova Gen3 Lite con pinza Gen3 Lite 2F ficticios. Workspace: $WORKSPACE"
 echo "Dominio ROS: $ROS_DOMAIN_ID. Para cerrar todo: cierra la GUI o pulsa Ctrl+C."
+# En este paquete Lite, robot.launch.py solo inicia MoveIt: bringup publica
+# el modelo y pone en marcha ros2_control y los controladores ficticios.
+start ros2 launch kortex_bringup gen3_lite.launch.py robot_ip:=127.0.0.1 \
+  use_fake_hardware:=true launch_rviz:=false
 start ros2 launch "$CONFIG" robot.launch.py robot_ip:=127.0.0.1 \
   use_fake_hardware:=true launch_rviz:=false
 # Espera el servidor de MoveIt antes de abrir la interfaz.
@@ -81,6 +87,42 @@ finally:
     node.destroy_node()
     rclpy.shutdown()
 PY
+$TABLERO && start python3 "$DIR/escena_virtual.py"
+if $TABLERO; then
+  # No habilitar la GUI hasta confirmar que MoveIt conoce los obstáculos.
+  python3 - <<'PY'
+import time
+import rclpy
+from moveit_msgs.srv import GetPlanningScene
+from moveit_msgs.msg import PlanningSceneComponents
+rclpy.init()
+node = rclpy.create_node('esperar_tablero_virtual')
+client = node.create_client(GetPlanningScene, '/get_planning_scene')
+try:
+    limite = time.monotonic() + 20
+    listo = False
+    while time.monotonic() < limite:
+        if not client.wait_for_service(timeout_sec=1):
+            continue
+        request = GetPlanningScene.Request()
+        request.components.components = PlanningSceneComponents.WORLD_OBJECT_NAMES
+        future = client.call_async(request)
+        rclpy.spin_until_future_complete(node, future, timeout_sec=1)
+        if future.done():
+            nombres = {o.id for o in future.result().scene.world.collision_objects}
+            if {'semillero_tablero_virtual', 'semillero_pieza_virtual'} <= nombres:
+                listo = True
+                break
+        else:
+            client.remove_pending_request(future)
+        time.sleep(0.1)
+    if not listo:
+        raise SystemExit('No se confirmó el tablero virtual en MoveIt. Revisa la configuración de la escena.')
+finally:
+    node.destroy_node()
+    rclpy.shutdown()
+PY
+fi
 $RVIZ && start rviz2 -d "$DIR/brazo.rviz"
 $GUI && start python3 "$DIR/mover_xyz.py"
 # Si termina cualquiera de los programas, cierra los restantes de esta sesión.
