@@ -1,0 +1,3 @@
+# Mantener los lanzadores utilizables al compartir el repositorio Windows/WSL.
+brazo_kinova/*.sh text eol=lf
+brazo_kinova/*.cmd text eol=crlf

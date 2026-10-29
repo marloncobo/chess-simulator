@@ -22,6 +22,9 @@ else:
 class EscenaTest(unittest.TestCase):
     def setUp(self):
         self.config = escena.cargar_config(escena.CONFIG)
+        # Geometría de referencia independiente de la ubicación elegida por el usuario.
+        self.config['centro_x_m'] = .40
+        self.config['centro_y_m'] = 0.0
 
     def test_medidas_y_contacto_tablero_pieza(self):
         tablero, pieza = escena.objetos(self.config)
