@@ -16,3 +16,4 @@ metricas/v1-4/weights/
 /resultados/*.csv
 /resultados/*.jpg
 /resultados/*.png
+/resultados/alcance_lite*.log

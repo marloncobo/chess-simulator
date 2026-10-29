@@ -14,6 +14,10 @@ El grupo de planificación es `arm`; el montaje sigue siendo `end_effector_link`
 | `mover_xyz.py` | Ventana con casillas x, y, z, botones − / + (1 cm) y botón **Mover**. |
 | `escena_virtual.py` | Añade tablero y pieza como obstáculos de MoveIt y marcas de RViz. |
 | `escena_virtual.json` | Medidas, ubicación del tablero y casilla de la pieza, configurables en metros. |
+| `evaluar_alcance.py` | Compara las 64 casillas en una sesión ROS aislada, sin ejecutar movimientos. |
+
+Consulta el [informe de alcance](../docs/ALCANCE_KINOVA_LITE.md) para los mapas,
+las ubicaciones comparadas y las limitaciones de la prueba a 18 cm.
 
 ## Requisitos
 
