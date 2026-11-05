@@ -19,6 +19,9 @@ El grupo de planificación es `arm`; el montaje sigue siendo `end_effector_link`
 Consulta el [informe de alcance](../docs/ALCANCE_KINOVA_LITE.md) para los mapas,
 las ubicaciones comparadas y las limitaciones de la prueba a 18 cm.
 
+Para conectar el hardware físico, consulta la [guía del brazo real en Windows y
+WSL](../docs/BRAZO_REAL_WSL.md), con diagnóstico de red y comandos por terminal.
+
 ## Requisitos
 
 - ROS 2 Humble y MoveIt 2.
