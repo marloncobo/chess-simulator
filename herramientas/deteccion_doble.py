@@ -1,6 +1,4 @@
 """Interfaz de calibración, detección y tablero compartido de dos cámaras."""
-import hashlib
-import json
 import multiprocessing as mp
 import time
 
@@ -11,6 +9,7 @@ from herramientas.probar_dos_camaras import CamaraSupervisada, panel, texto, vig
 from chess_simulator.captura_vivo import ultimo, leer_ultimo
 from chess_simulator.detector_doble import inferir_par
 from chess_simulator.fusion_camaras import observar_vista, fusionar, par_valido, FiltroCasillas
+from chess_simulator.calibracion import guardar_calibracion, cargar_camara, ruta_calibracion as ruta_comun
 from chess_simulator.rutas import CONFIG
 from chess_simulator.seguimiento import SeguimientoPorCasilla
 from chess_simulator.vision_vivo import homografia
@@ -23,23 +22,15 @@ VERTICES = ("a8", "h8", "h1", "a1")
 
 
 def ruta_calibracion(source):
-    identidad = hashlib.sha256(str(source).encode()).hexdigest()[:16]
-    return CONFIG / f"calibracion_doble_{identidad}.json"
+    return ruta_comun(source, CONFIG)
 
 
-def guardar(source, resolucion, esquinas):
-    homografia(esquinas)
-    ruta = ruta_calibracion(source)
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-    ruta.write_text(json.dumps({"resolucion": list(resolucion), "esquinas": esquinas}), encoding="utf-8")
+def guardar(source, resolucion, esquinas, tablero=None, contexto=None):
+    guardar_calibracion(ruta_calibracion(source), source, resolucion, esquinas, tablero, contexto)
 
 
-def cargar(source, resolucion):
-    datos = json.loads(ruta_calibracion(source).read_text(encoding="utf-8"))
-    if datos["resolucion"] != list(resolucion):
-        raise ValueError("La resolucion cambio; calibre nuevamente")
-    homografia(datos["esquinas"])
-    return datos["esquinas"]
+def cargar(source, resolucion, tablero=None, contexto=None):
+    return cargar_camara(source, resolucion, tablero, contexto, modo="doble", directorio=CONFIG)
 
 
 def punto_original(x, y, indice, forma):
@@ -56,6 +47,8 @@ def punto_original(x, y, indice, forma):
 class SesionDoble:
     def __init__(self, camaras, args):
         self.camaras, self.args = camaras, args
+        self.tablero_fisico = getattr(args, "tablero_fisico", None)
+        self.contexto = getattr(args, "contexto_calibracion", None)
         self.esquinas = [[], []]
         self.resoluciones = [None, None]
         self.generaciones = [c.reinicios for c in camaras]
@@ -76,6 +69,7 @@ class SesionDoble:
     def invalidar(self):
         self.revision += 1
         self.ultimas = [None, None]
+        self.observacion = None
         self.procedencias = {}
         self.casillas = {}
         self.filtros = [FiltroCasillas(), FiltroCasillas()]
@@ -141,14 +135,14 @@ class SesionDoble:
         self.seleccion = self.congelada = None
         self.invalidar()
         try:
-            guardar(self.camaras[i].source, self.resoluciones[i], self.esquinas[i])
+            guardar(self.camaras[i].source, self.resoluciones[i], self.esquinas[i], self.tablero_fisico, self.contexto)
             self.mensaje = f"Camara {i+1} calibrada y guardada"
         except OSError:
             self.mensaje = f"Camara {i+1} calibrada; no se pudo guardar en disco"
 
     def cargar(self):
         try:
-            esquinas = [cargar(c.source, r) for c, r in zip(self.camaras, self.resoluciones)]
+            esquinas = [cargar(c.source, r, self.tablero_fisico, self.contexto) for c, r in zip(self.camaras, self.resoluciones)]
         except (OSError, ValueError, KeyError, TypeError):
             self.mensaje = "No se pudo cargar ambas calibraciones; marque con 1 y 2"
             return
@@ -163,6 +157,7 @@ class SesionDoble:
         vistas = resultado["vistas"]
         actuales = [c.estado for c in self.camaras]
         if not par_valido(vistas, ahora, self.args.max_desfase_ms/1000) or not all(vigente(p, ahora) for p in actuales):
+            self.observacion = None
             self.procedencias = {}
             self.casillas = {}
             self.seguimiento.invalidar("Resultados antiguos; posicion conservada")
@@ -176,7 +171,8 @@ class SesionDoble:
             movimiento = filtro.evaluar(vista["frame"], esquinas, ahora)
             observacion = observar_vista(vista["detecciones"], esquinas, self.secuencia, movimiento)
             observaciones.append(filtro.verificar_vacios(observacion))
-        self.observacion, self.procedencias = fusionar(observaciones, self.secuencia)
+        self.observacion, self.procedencias = fusionar(observaciones, self.secuencia, tablero=self.tablero_fisico,
+                                                          max_discrepancia_m=getattr(self.args, "max_discrepancia_m", None))
         self.casillas = diagnosticar(observaciones, self.observacion)
         movimiento = self.seguimiento.recibir(self.observacion, ahora, self.procedencias)
         if movimiento:
@@ -207,6 +203,22 @@ class SesionDoble:
                         x, y = map(int, d["punto"])
                         cv2.circle(imagen, (x, y), 4, color, -1)
                         texto(imagen, f'{d["pieza"]} {d["color"]} {d["conf"]:.2f}', (x, max(15, y-10)), color=color)
+                if (self.observacion is not None and resultado and vigente(resultado, ahora)
+                        and all(v is not None and vigente(v, ahora) for v in self.ultimas)):
+                    inversa = np.linalg.inv(homografia(self.esquinas[i])) if len(self.esquinas[i]) == 4 else None
+                    for celda, medida in self.observacion.posiciones_fisicas.items():
+                        if inversa is None or not any(m["vista"] == i+1 for m in medida["muestras"]):
+                            continue
+                        x, y, _ = self.observacion.apoyos[celda]
+                        px = cv2.perspectiveTransform(np.float32([[[x, y]]]), inversa)[0, 0]
+                        xm, ym = medida["xy_m"]
+                        delta = medida["discrepancia_m"]
+                        detalle = f" d={delta*1000:.1f}mm" if delta is not None else " unilateral"
+                        if medida["dentro_tolerancia"] is False:
+                            detalle += " FUERA TOL."
+                        casilla = chr(97+celda[1])+str(8-celda[0])
+                        texto(imagen, f"{casilla} X={xm:.3f} Y={ym:.3f}m{detalle}",
+                              (int(px[0]), max(15, int(px[1])+20)), color=(80, 255, 255))
                 for n, p in enumerate(self.esquinas[i]):
                     xy = tuple(map(int, p))
                     cv2.circle(imagen, xy, 5, (100, 255, 100), -1)
@@ -274,6 +286,7 @@ def ejecutar(args):
                 ultimo(entrada, {"revision": sesion.revision, "paquetes": paquetes})
                 enviado, ocupado, desde = firma, True, ahora
             if fallo:
+                sesion.observacion = None
                 sesion.mensaje = fallo
                 sesion.procedencias = {}
                 sesion.casillas = {}
@@ -281,6 +294,7 @@ def ejecutar(args):
             elif not listo and sesion.seleccion is None:
                 sesion.mensaje = "Cargando modelo; puede calibrar con 1 y 2"
             elif habilitado and not valido:
+                sesion.observacion = None
                 sesion.mensaje = "Faltan dos imagenes recientes o el desfase supera el umbral"
                 sesion.seguimiento.invalidar(sesion.mensaje)
                 sesion.procedencias = {}

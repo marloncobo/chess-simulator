@@ -33,13 +33,8 @@ def proyectar(torres, esquinas):
     Se usa el centroide existente, con la limitación de perspectiva/altura que
     tiene ese punto. No se confunden los centros de las torres con las esquinas.
     """
-    puntos = np.asarray(esquinas, dtype=np.float32)
-    if puntos.shape != (4, 2) or not np.isfinite(puntos).all():
-        raise ValueError("Marque cuatro vértices válidos")
-    if not cv2.isContourConvex(puntos.reshape(-1, 1, 2)) or abs(cv2.contourArea(puntos)) < 1:
-        raise ValueError("Los vértices deben formar un cuadrilátero sin cruces")
-    destino = np.float32([[0, 0], [8, 0], [8, 8], [0, 8]])
-    matriz = cv2.getPerspectiveTransform(puntos, destino)
+    from chess_simulator.vision_vivo import homografia
+    matriz = homografia(esquinas)
     posicion = [[""] * 8 for _ in range(8)]
     asignadas, fuera, ocupadas = [], [], set()
     for i, torre in enumerate(torres, 1):
@@ -188,6 +183,8 @@ def main(argv=None):
                         help="Base aproximada para vista inclinada o centro para vista cenital")
     parser.add_argument("--confianza", type=float, default=.25,
                         help="Confianza mínima de YOLO (por defecto 0.25)")
+    parser.add_argument("--tablero", type=Path, help="Perfil físico JSON con dimensiones en metros")
+    parser.add_argument("--contexto-calibracion", help="Identificador del montaje/lente/zoom/recorte; cambiarlo exige recalibrar")
     parser.add_argument("--duracion", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--modelo", type=Path, default=MODELO, help="Modelo local de segmentación")
     parser.add_argument("--hsv-negra-max", type=int, default=85, help="V máximo para piezas negras")
@@ -195,6 +192,15 @@ def main(argv=None):
     parser.add_argument("--hsv-saturacion-max", type=int, default=110, help="S máximo para piezas blancas")
     parser.add_argument("--hsv-erosion", type=int, default=3, help="Erosión interior de la máscara (0 a 15 px)")
     args = parser.parse_args(argv)
+    tablero_fisico = None
+    if args.tablero:
+        if not args.camara:
+            parser.error("--tablero requiere --camara; la fotografía solo muestra casillas")
+        from chess_simulator.calibracion import cargar_tablero
+        try:
+            tablero_fisico = cargar_tablero(args.tablero)
+        except (OSError, ValueError, TypeError) as error:
+            parser.error(str(error))
     if args.camara:
         if not args.modelo.is_file():
             parser.error(f"El modelo local no existe: {args.modelo}")
@@ -209,7 +215,8 @@ def main(argv=None):
         parametros_hsv = dict(negra_max=args.hsv_negra_max, blanca_min=args.hsv_blanca_min,
                               saturacion_max=args.hsv_saturacion_max, erosion=args.hsv_erosion)
         ejecutar(args.modelo, args.source, args.backend, args.punto, args.duracion, args.confianza,
-                 parametros_hsv=parametros_hsv)
+                 parametros_hsv=parametros_hsv, tablero_fisico=tablero_fisico,
+                 contexto_calibracion=args.contexto_calibracion)
         return
     if args.entrada is not None:
         from chess_simulator.tablero_pygame import main as ejecutar_tablero

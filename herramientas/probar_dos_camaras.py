@@ -60,7 +60,22 @@ def argumentos(argv=None):
     parser.add_argument("--confianza", type=float, default=CONFIANZA_DETECTOR,
                         help=f"Filtro de YOLO (0.05 a 1, por defecto {CONFIANZA_DETECTOR}). Entre este valor "
                              f"y {UMBRAL_DUDA} la deteccion no afirma pieza: deja la casilla en duda")
+    parser.add_argument("--tablero", type=Path, help="Perfil físico compartido por ambas cámaras")
+    parser.add_argument("--contexto-calibracion", help="Identificador de montaje/lente/zoom/recorte")
+    parser.add_argument("--max-discrepancia-m", type=float, help="Tolerancia de discrepancia entre apoyos, en metros")
     args = parser.parse_args(argv)
+    args.tablero_fisico = None
+    if args.tablero:
+        from chess_simulator.calibracion import cargar_tablero
+        try:
+            args.tablero_fisico = cargar_tablero(args.tablero)
+        except (OSError, ValueError, TypeError) as error:
+            parser.error(str(error))
+        if not args.detectar:
+            parser.error("--tablero requiere --detectar")
+    if args.max_discrepancia_m is not None:
+        if not args.tablero or not math.isfinite(args.max_discrepancia_m) or args.max_discrepancia_m < 0:
+            parser.error("--max-discrepancia-m requiere --tablero y un número finito no negativo")
     if args.sources[0] == args.sources[1]:
         parser.error("Indique dos fuentes distintas")
     if args.ancho <= 0 or args.alto <= 0:

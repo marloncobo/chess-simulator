@@ -11,6 +11,7 @@ from chess_simulator.vision_vivo import apoyo_tablero, construir_observacion, ho
 class Vista(Observacion):
     motivos: dict = field(default_factory=dict)
     apoyos: dict = field(default_factory=dict)
+    posiciones_fisicas: dict = field(default_factory=dict)
 
 
 def anotar(motivos, celda, motivo):
@@ -27,7 +28,8 @@ def con_dudas(obs, motivos, apoyos=None):
         tablero[f][c] = ""
         confianzas[f][c] = 0.
     return Vista(obs.secuencia, tuple(map(tuple, tablero)), not motivos, obs.confianza,
-                 frozenset(motivos), tuple(map(tuple, confianzas)), motivos, apoyos or {})
+                 frozenset(motivos), tuple(map(tuple, confianzas)), motivos,
+                 {p: v for p, v in (apoyos or {}).items() if p not in motivos and tablero[p[0]][p[1]]})
 
 
 class FiltroCasillas:
@@ -88,7 +90,8 @@ def observar_vista(detecciones, esquinas, secuencia, movimiento=()):
 
     Es una aproximación de oclusión sobre el plano, no un detector de manos.
     """
-    obs, _, _, razones = construir_observacion(detecciones, esquinas, secuencia)
+    aceptados = {}
+    obs, _, _, razones = construir_observacion(detecciones, esquinas, secuencia, aceptados)
     motivos = {}
     for razon in razones:
         causas, casilla = separar_razon(razon)
@@ -133,7 +136,7 @@ def observar_vista(detecciones, esquinas, secuencia, movimiento=()):
                 anotar(motivos, (f, c), "Oclusion por silueta")
     for celda in movimiento:
         anotar(motivos, celda, "Movimiento local")
-    return con_dudas(obs, motivos, apoyos)
+    return con_dudas(obs, motivos, aceptados)
 
 
 # Motivos que solo dicen "esta cámara no alcanza a ver la casilla": no son
@@ -166,7 +169,7 @@ def vacia_confirmada(vistas, f, c):
     return any(fiables) and all(fi or _sin_vista(o, f, c) for fi, o in zip(fiables, vistas))
 
 
-def fusionar(vistas, secuencia, confianza_unilateral=.7):
+def fusionar(vistas, secuencia, confianza_unilateral=.7, tablero=None, max_discrepancia_m=None):
     """Una evidencia positiva basta; los conflictos quedan sin confirmar.
 
     Vacío requiere una ausencia fiable y que la otra vista no aporte indicios de
@@ -177,6 +180,8 @@ def fusionar(vistas, secuencia, confianza_unilateral=.7):
     en duda cada casilla, y en `confianza` la menor de las piezas propuestas
     (no un 1 fijo), para que el seguimiento temporal pueda usarla.
     """
+    if max_discrepancia_m is not None and (not np.isfinite(max_discrepancia_m) or max_discrepancia_m < 0):
+        raise ValueError("La tolerancia debe ser finita y no negativa")
     if len(vistas) != 2:
         raise ValueError("Se requieren exactamente dos vistas")
     piezas, dudas, confianzas, procedencias, motivos = [], [], {}, {}, {}
@@ -227,8 +232,29 @@ def fusionar(vistas, secuencia, confianza_unilateral=.7):
         "desconocidas": dudas, "completa": not dudas,
         "confianza": min(confianzas.values(), default=1.),
         "confianzas": confianzas})
+    apoyos, fisicas = {}, {}
+    for pieza in piezas:
+        casilla = pieza["casilla"]
+        celda = (8-int(casilla[1]), ord(casilla[0])-97)
+        muestras = [(i+1, vista.apoyos[celda]) for i, vista in enumerate(vistas)
+                    if hasattr(vista, "apoyos") and celda in vista.apoyos
+                    and celda not in vista.desconocidas and vista.tablero[celda[0]][celda[1]] == pieza["pieza"]]
+        if not muestras:
+            continue
+        x, y = np.mean([p[:2] for _, p in muestras], axis=0)
+        apoyos[celda] = (float(x), float(y), confianzas[casilla])
+        if tablero is not None:
+            medidas = [{"vista": i, "xy_m": tablero.a_metros(*p[:2]), "confianza": p[2]}
+                       for i, p in muestras]
+            discrepancia = (float(np.linalg.norm(np.subtract(medidas[0]["xy_m"], medidas[1]["xy_m"])))
+                           if len(medidas) == 2 else None)
+            fisicas[celda] = {"xy_m": tablero.a_metros(float(x), float(y)),
+                             "tablero": tablero.identificador, "muestras": medidas,
+                             "discrepancia_m": discrepancia,
+                             "dentro_tolerancia": (discrepancia <= max_discrepancia_m
+                                 if discrepancia is not None and max_discrepancia_m is not None else None)}
     return Vista(obs.secuencia, obs.tablero, obs.completa, obs.confianza, obs.desconocidas,
-                 obs.confianzas, motivos, {}), procedencias
+                 obs.confianzas, motivos, apoyos, fisicas), procedencias
 
 
 def par_valido(paquetes, ahora, max_desfase=.25, max_edad=2.):

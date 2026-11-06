@@ -1,6 +1,4 @@
 """Interfaz de cámara, calibración interactiva y estado temporal con color HSV."""
-import json
-from pathlib import Path
 import time
 
 import cv2
@@ -8,31 +6,19 @@ import numpy as np
 import pygame
 
 from chess_simulator.captura_vivo import FlujoVivo, leer_ultimo, ultimo
-from chess_simulator.rutas import CONFIG
+from chess_simulator.calibracion import (guardar_calibracion, cargar_calibracion,
+                                         cargar_camara, ruta_calibracion)
+from chess_simulator.seguimiento import nombre
 from chess_simulator.seguimiento import SeguimientoPorCasilla
 from chess_simulator.tablero_pygame import LADO, CASILLA, dibujar_tablero, dibujar_piezas
 from chess_simulator.vision_vivo import FiltroEscena, construir_observacion, homografia
 
 
-def guardar_calibracion(ruta, source, resolucion, esquinas):
-    homografia(esquinas)
-    datos = {"source": source, "resolucion": list(resolucion), "esquinas": esquinas}
-    Path(ruta).parent.mkdir(parents=True, exist_ok=True)
-    Path(ruta).write_text(json.dumps(datos, indent=2), encoding="utf-8")
-
-
-def cargar_calibracion(ruta, source, resolucion):
-    datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
-    if datos.get("source") != source or datos.get("resolucion") != list(resolucion):
-        raise ValueError("La calibración pertenece a otra cámara o resolución")
-    homografia(datos.get("esquinas"))
-    return datos["esquinas"]
-
-
-def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, confianza=.25, parametros_hsv=None):
+def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, confianza=.25, parametros_hsv=None, tablero_fisico=None, contexto_calibracion=None):
     pygame.init()
     pantalla = pygame.display.set_mode((1200, 820))
-    pygame.display.set_caption(f"Ajedrez en tiempo real · source={source}")
+    perfil = f" · tablero={tablero_fisico.identificador}" if tablero_fisico else ""
+    pygame.display.set_caption(f"Ajedrez en tiempo real · source={source}{perfil}")
     fuente = pygame.font.SysFont("segoeuisymbol,dejavusans", int(CASILLA*.7))
     texto = pygame.font.SysFont("arial", 17)
     tablero = pygame.Surface((LADO, LADO))
@@ -54,12 +40,8 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
     limite_calibracion = 0.
     historial_visible = []
     ultimo_diagnostico = None
-    if isinstance(source, str):
-        # Una URL no sirve como nombre de archivo; se identifica por su huella.
-        import hashlib
-        calibracion = CONFIG / f"calibracion_camara_url_{hashlib.sha256(source.encode()).hexdigest()[:12]}.json"
-    else:
-        calibracion = CONFIG / f"calibracion_camara_{source}.json"
+    calibracion = ruta_calibracion(source)
+    apoyos_visibles, instante_apoyos = {}, 0.
     inicio = time.monotonic()
     # No se cambia a source=0 si el celular no responde.
     print(f"Abriendo únicamente source={source}; acepte la notificación en el celular.", flush=True)
@@ -113,13 +95,14 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                         estado = "Sincronizando la distribución visible"
                     elif evento.key == pygame.K_g and len(esquinas) == 4:
                         try:
-                            guardar_calibracion(calibracion, source, resolucion, esquinas)
+                            guardar_calibracion(calibracion, source, resolucion, esquinas,
+                                                tablero_fisico, contexto_calibracion)
                             estado = "Calibración guardada (sin fotografías)"
                         except (OSError, ValueError) as error:
                             estado = str(error)
                     elif evento.key == pygame.K_l and resolucion is not None:
                         try:
-                            esquinas = cargar_calibracion(calibracion, source, resolucion)
+                            esquinas = cargar_camara(source, resolucion, tablero_fisico, contexto_calibracion)
                             congelada = None
                             limite_calibracion = ahora
                             filtro = FiltroEscena()
@@ -139,7 +122,8 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                         if len(esquinas) == 4:
                             try:
                                 homografia(esquinas)
-                                guardar_calibracion(calibracion, source, resolucion, esquinas)
+                                guardar_calibracion(calibracion, source, resolucion, esquinas,
+                                                    tablero_fisico, contexto_calibracion)
                                 congelada = None
                                 limite_calibracion = ahora
                                 filtro = FiltroEscena()
@@ -149,6 +133,7 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                                 estado = str(error)
             salida = leer_ultimo(flujo.resultados)
             if salida:
+                apoyos_visibles = {}
                 if "error" in salida:
                     estado = salida["error"]
                     seguimiento.invalidar(estado)
@@ -157,13 +142,15 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                     procesada = ahora
                     if (not pausa and len(esquinas) == 4 and salida["instante"] > limite_calibracion
                             and ahora-salida["instante"] < 2 and ahora-recibida < 2):
+                        apoyos = {}
                         obs, vista, asignadas, razones = construir_observacion(
-                            salida["detecciones"], esquinas, salida["secuencia"])
+                            salida["detecciones"], esquinas, salida["secuencia"], apoyos)
                         quieta = filtro.estable(salida["frame"], esquinas)
                         if not quieta:
                             seguimiento.invalidar("Movimiento u oclusión; esperando imagen estable",
                                                   conservar_movimiento=True, ahora=ahora)
                         else:
+                            apoyos_visibles, instante_apoyos = apoyos, salida["instante"]
                             movimiento = seguimiento.recibir(obs, ahora)
                             if movimiento:
                                 historial_visible.append(movimiento.texto())
@@ -218,6 +205,16 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                         pygame.draw.circle(pantalla, tinta, xy, 4)
                         etiqueta = d["pieza"] + {"BLANCA": " B", "NEGRA": " N"}.get(color, " ?")
                         pantalla.blit(texto.render(etiqueta, True, tinta), xy)
+                if (tablero_fisico is not None and len(esquinas) == 4 and not pausa
+                        and congelada is None and ahora-instante_apoyos < 1
+                        and ahora-recibida < 1 and instante_apoyos > limite_calibracion):
+                    inversa = np.linalg.inv(homografia(esquinas))
+                    for celda, (x, y, _) in apoyos_visibles.items():
+                        xm, ym = tablero_fisico.a_metros(x, y)
+                        px = cv2.perspectiveTransform(np.float32([[[x, y]]]), inversa)[0, 0]
+                        xy = en_pantalla(px)
+                        etiqueta = f"{nombre(*celda)} X={xm:.3f} Y={ym:.3f} m"
+                        pantalla.blit(texto.render(etiqueta, True, (255, 255, 120)), (xy[0], xy[1]+18))
             dibujar_tablero(tablero)
             if seguimiento.posicion is not None:
                 dibujar_piezas(tablero, fuente, seguimiento.posicion)
@@ -230,7 +227,7 @@ def ejecutar(modelo, source=1, backend="auto", punto="base", duracion=None, conf
                 pantalla.blit(texto.render(etiqueta, True, (245,245,245)), (rect.x+10, rect.y+6))
             lineas = [
                 (10, 10, estado_camara),
-                (10, 35, "Vértices exteriores: a8 > h8 > h1 > a1 (clics)."),
+                (10, 35, "a8 > h8 > h1 > a1 · " + ("X/Y en metros" if tablero_fisico else "Solo casillas")),
                 (10, 60, "R: recalibrar · G: guardar · L: cargar calibración"),
                 (560, 10, "POSICIÓN DETECTADA · blancas y negras (HSV)"),
                 (10, 712, estado[:130]),

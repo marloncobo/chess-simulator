@@ -111,7 +111,15 @@ def separar_razon(razon):
     return [c for c in causas.split(" + ") if c], casilla
 
 
-def construir_observacion(detecciones, esquinas, secuencia):
+def construir_observacion(detecciones, esquinas, secuencia, apoyos=None):
+    """Rellena opcionalmente apoyos[(fila, col)] = (x, y, confianza).
+
+    Solo incluye candidatos aceptados, después de resolver conflictos y límites.
+    Las coordenadas continuas se conservan antes de convertirlas a casillas.
+    """
+    if apoyos is not None:
+        apoyos.clear()
+    aceptados = {}
     matriz = homografia(esquinas)
     piezas, por_casilla = [], {}
     vista = [[""] * 8 for _ in range(8)]
@@ -158,6 +166,7 @@ def construir_observacion(detecciones, esquinas, secuencia):
         vista[fila][col] = codigo
         piezas.append({"casilla": nombre(fila, col), "pieza": codigo})
         confianzas[nombre(fila, col)] = mejor["conf"]
+        aceptados[fila, col] = (x, y, mejor["conf"])
     # Aplicar después de agrupar por casilla: duplicados de una misma pieza no
     # deben consumir varias plazas, ni deben hacerlo detecciones fuera del tablero.
     sobran = excedentes(((p["casilla"], p["pieza"]) for p in piezas),
@@ -175,6 +184,9 @@ def construir_observacion(detecciones, esquinas, secuencia):
                                  "confianza": min(confianzas.values(), default=1),
                                  "confianzas": confianzas,
                                  "piezas": piezas})
+    if apoyos is not None:
+        apoyos.update({celda: p for celda, p in aceptados.items()
+                       if obs.tablero[celda[0]][celda[1]] and celda not in obs.desconocidas})
     return obs, vista, puntos, razones
 
 

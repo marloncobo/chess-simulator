@@ -266,3 +266,9 @@ Pygame; el detector también utiliza OpenCV, NumPy y Ultralytics ya instalados.
 
 Consulte [la guía de uso](docs/GUIA_USO.md) para calibración, ajustes HSV, seguimiento,
 entrada JSON y limitaciones del detector.
+## Calibración física
+
+La detección con una o dos cámaras admite un perfil con las dimensiones medidas
+del tablero, muestra los apoyos aceptados en metros y permite evaluar errores
+con puntos físicos independientes. Consulta [el procedimiento de calibración](docs/CALIBRACION_FISICA.md)
+para configurar las medidas, reutilizar perfiles y generar el informe de precisión.
