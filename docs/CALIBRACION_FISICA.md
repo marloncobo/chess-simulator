@@ -134,3 +134,39 @@ de pinza requieren otra calibración y quedan como trabajo posterior.
 ```powershell
 python -m unittest discover -s tests -q
 ```
+
+## Experimento con regla de tres en Windows
+
+Desde PowerShell, en la raíz del proyecto, use el Python del entorno virtual.
+El experimento requiere OpenCV con interfaz gráfica y NumPy.
+
+```powershell
+.\.venv\Scripts\python -m herramientas.calibrar_regla_de_tres --imagen foto1.jpeg
+.\.venv\Scripts\python -m herramientas.calibrar_regla_de_tres --source 0 --ancho-cm 40.1 --alto-cm 39.9 --salida referencias.csv
+.\.venv\Scripts\python -m unittest tests.test_regla_de_tres -v
+```
+
+Con el celular puede abrir una foto o pasar su URL de vídeo como fuente. El
+comando congela el primer fotograma. Coloque la cámara perpendicular al tablero
+y alinee las filas con la horizontal. Mida únicamente las ocho casillas de cada
+eje. Las dimensiones predeterminadas del experimento son 40 × 40 cm.
+
+1. Marque los vértices del área jugable en el orden a8, h8, h1, a1. La terminal muestra la resolución, los cuatro lados proyectados y ambas escalas.
+2. Haga clic en un punto. La imagen muestra píxeles, centímetros y casilla. La terminal añade metros y el centro físico de la casilla. X crece hacia la derecha e Y hacia abajo. Los márgenes pueden tener coordenadas negativas o superiores a las dimensiones del tablero.
+3. Para validar, seleccione un punto independiente cuya posición haya medido desde a8. Pulse V en la ventana y escriba X e Y en la terminal separados por espacio, con punto decimal. Repita en varias zonas. El error es la distancia euclidiana entre estimación y medida. La terminal muestra error individual, media y máximo en cm y mm. Con `--salida` se añaden las mediciones al CSV. R borra la selección y reinicia las estadísticas de la sesión. Esc cierra la ventana.
+
+La escala X en px/cm es el promedio de las diferencias horizontales de los
+bordes superior e inferior dividido por el ancho físico. Para Y se promedian
+las diferencias verticales izquierda y derecha y se divide por el alto.
+Los recíprocos dan cm/px. Para un píxel (u,v) y un origen (u₀,v₀),
+X = (u − u₀)/escalaX e Y = (v − v₀)/escalaY. Dividir por 100 da metros.
+
+Cada casilla mide ancho/8 por alto/8. Las líneas internas pertenecen a la
+casilla de la derecha o de abajo. Los bordes físicos máximos pertenecen a la
+última columna o fila. Para asignar casilla, el clic debe caer tanto en el
+cuadrilátero marcado como en el rectángulo físico estimado.
+
+La inclinación, la perspectiva y la distorsión de lente producen errores que
+varían según la posición. Promediar los lados solo estima una escala constante.
+Las pruebas sintéticas comprueban las fórmulas. La exactitud en el montaje se
+determina con referencias físicas independientes.
